@@ -49,7 +49,10 @@ type JoinStatus =
 
 type MyJoinRequest = {
   drop_id: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status:
+    | 'pending'
+    | 'accepted'
+    | 'declined';
 };
 
 function formatDropTime(createdAt: string) {
@@ -90,22 +93,70 @@ export default function HomeScreen() {
   const [drops, setDrops] =
     useState<Drop[]>([]);
 
-  const [currentUserId, setCurrentUserId] =
+  const [
+    currentUserId,
+    setCurrentUserId,
+  ] =
     useState<string | null>(null);
 
-  const [joinStatuses, setJoinStatuses] =
-    useState<Record<string, JoinStatus>>({});
+  const [
+    joinStatuses,
+    setJoinStatuses,
+  ] =
+    useState<
+      Record<string, JoinStatus>
+    >({});
 
-  const [pendingCounts, setPendingCounts] =
-    useState<Record<string, number>>({});
+  const [
+    pendingCounts,
+    setPendingCounts,
+  ] =
+    useState<
+      Record<string, number>
+    >({});
 
-  const [joinLoadingId, setJoinLoadingId] =
-    useState<string | null>(null);
+  const [
+    likedDropIds,
+    setLikedDropIds,
+  ] =
+    useState<Set<string>>(
+      new Set()
+    );
 
-  const [loading, setLoading] =
+  const [
+    likeCounts,
+    setLikeCounts,
+  ] =
+    useState<
+      Record<string, number>
+    >({});
+
+  const [
+    joinLoadingId,
+    setJoinLoadingId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    likeLoadingId,
+    setLikeLoadingId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [refreshing, setRefreshing] =
+  const [
+    refreshing,
+    setRefreshing,
+  ] =
     useState(false);
 
   const loadDrops = async (
@@ -121,9 +172,13 @@ export default function HomeScreen() {
       const {
         data: { user },
         error: userError,
-      } = await supabase.auth.getUser();
+      } =
+        await supabase.auth.getUser();
 
-      if (userError || !user) {
+      if (
+        userError ||
+        !user
+      ) {
         Alert.alert(
           'Error',
           'Could not find the current user.'
@@ -132,7 +187,9 @@ export default function HomeScreen() {
         return;
       }
 
-      setCurrentUserId(user.id);
+      setCurrentUserId(
+        user.id
+      );
 
       const {
         data,
@@ -155,9 +212,12 @@ export default function HomeScreen() {
             city
           )
         `)
-        .order('created_at', {
-          ascending: false,
-        });
+        .order(
+          'created_at',
+          {
+            ascending: false,
+          }
+        );
 
       if (error) {
         console.error(
@@ -174,85 +234,218 @@ export default function HomeScreen() {
       }
 
       const loadedDrops =
-        (data ?? []) as unknown as Drop[];
+        (data ??
+          []) as unknown as Drop[];
 
-      setDrops(loadedDrops);
+      setDrops(
+        loadedDrops
+      );
 
-      // Join requests текущего пользователя.
+      /*
+       * LIKE STATE
+       */
+
       const {
-        data: myRequests,
-        error: myRequestsError,
+        data: allLikes,
+        error:
+          allLikesError,
       } = await supabase
-        .from('join_requests')
-        .select('drop_id, status')
-        .eq('user_id', user.id);
+        .from(
+          'drop_likes'
+        )
+        .select(
+          'drop_id, user_id'
+        );
 
-      if (myRequestsError) {
+      if (
+        allLikesError
+      ) {
+        console.error(
+          'LOAD LIKES ERROR:',
+          allLikesError
+        );
+      } else {
+        const nextLikedIds =
+          new Set<string>();
+
+        const nextLikeCounts:
+          Record<
+            string,
+            number
+          > = {};
+
+        (
+          allLikes ?? []
+        ).forEach(
+          (like) => {
+            nextLikeCounts[
+              like.drop_id
+            ] =
+              (
+                nextLikeCounts[
+                  like.drop_id
+                ] ?? 0
+              ) + 1;
+
+            if (
+              like.user_id ===
+              user.id
+            ) {
+              nextLikedIds.add(
+                like.drop_id
+              );
+            }
+          }
+        );
+
+        setLikedDropIds(
+          nextLikedIds
+        );
+
+        setLikeCounts(
+          nextLikeCounts
+        );
+      }
+
+      /*
+       * JOIN STATE
+       */
+
+      const {
+        data:
+          myRequests,
+        error:
+          myRequestsError,
+      } = await supabase
+        .from(
+          'join_requests'
+        )
+        .select(
+          'drop_id, status'
+        )
+        .eq(
+          'user_id',
+          user.id
+        );
+
+      if (
+        myRequestsError
+      ) {
         console.error(
           'MY JOIN REQUESTS ERROR:',
           myRequestsError
         );
       } else {
-        const nextStatuses: Record<
-          string,
-          JoinStatus
-        > = {};
+        const nextStatuses:
+          Record<
+            string,
+            JoinStatus
+          > = {};
 
         (
-          (myRequests ?? []) as MyJoinRequest[]
-        ).forEach((request) => {
-          nextStatuses[request.drop_id] =
-            request.status;
-        });
+          (myRequests ??
+            []) as MyJoinRequest[]
+        ).forEach(
+          (request) => {
+            nextStatuses[
+              request.drop_id
+            ] =
+              request.status;
+          }
+        );
 
-        setJoinStatuses(nextStatuses);
+        setJoinStatuses(
+          nextStatuses
+        );
       }
 
-      // Количество pending-заявок
-      // на собственные Drops.
+      /*
+       * REQUEST COUNTS
+       */
+
       const ownDropIds =
         loadedDrops
           .filter(
             (drop) =>
-              drop.author_id === user.id
+              drop.author_id ===
+              user.id
           )
-          .map((drop) => drop.id);
+          .map(
+            (drop) =>
+              drop.id
+          );
 
-      if (ownDropIds.length === 0) {
-        setPendingCounts({});
+      if (
+        ownDropIds.length ===
+        0
+      ) {
+        setPendingCounts(
+          {}
+        );
       } else {
         const {
-          data: pendingRequests,
-          error: pendingError,
-        } = await supabase
-          .from('join_requests')
-          .select('drop_id')
-          .in('drop_id', ownDropIds)
-          .eq('status', 'pending');
+          data:
+            pendingRequests,
+          error:
+            pendingError,
+        } =
+          await supabase
+            .from(
+              'join_requests'
+            )
+            .select(
+              'drop_id'
+            )
+            .in(
+              'drop_id',
+              ownDropIds
+            )
+            .eq(
+              'status',
+              'pending'
+            );
 
-        if (pendingError) {
+        if (
+          pendingError
+        ) {
           console.error(
             'PENDING COUNTS ERROR:',
             pendingError
           );
         } else {
-          const counts: Record<
-            string,
-            number
-          > = {};
+          const counts:
+            Record<
+              string,
+              number
+            > = {};
 
-          (pendingRequests ?? []).forEach(
-            (request) => {
-              counts[request.drop_id] =
-                (counts[request.drop_id] ?? 0) +
-                1;
+          (
+            pendingRequests ??
+            []
+          ).forEach(
+            (
+              request
+            ) => {
+              counts[
+                request.drop_id
+              ] =
+                (
+                  counts[
+                    request
+                      .drop_id
+                  ] ?? 0
+                ) + 1;
             }
           );
 
-          setPendingCounts(counts);
+          setPendingCounts(
+            counts
+          );
         }
       }
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         'LOAD DROPS ERROR:',
         error
@@ -263,137 +456,360 @@ export default function HomeScreen() {
         'Something went wrong while loading Drops.'
       );
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setLoading(
+        false
+      );
+
+      setRefreshing(
+        false
+      );
     }
   };
 
   useFocusEffect(
-    useCallback(() => {
-      loadDrops();
-    }, [])
+    useCallback(
+      () => {
+        loadDrops();
+      },
+      []
+    )
   );
 
-  const handleJoin = async (
-    drop: Drop
-  ) => {
-    if (
-      !currentUserId ||
-      joinLoadingId
-    ) {
-      return;
-    }
+  const handleLike =
+    async (
+      drop: Drop
+    ) => {
+      if (
+        !currentUserId ||
+        likeLoadingId
+      ) {
+        return;
+      }
 
-    const currentStatus =
-      joinStatuses[drop.id] ?? 'none';
+      const isLiked =
+        likedDropIds.has(
+          drop.id
+        );
 
-    try {
-      setJoinLoadingId(drop.id);
+      try {
+        setLikeLoadingId(
+          drop.id
+        );
 
-      if (currentStatus === 'pending') {
-        const { error } = await supabase
-          .from('join_requests')
-          .delete()
-          .eq('drop_id', drop.id)
-          .eq('user_id', currentUserId);
+        if (isLiked) {
+          const {
+            error,
+          } =
+            await supabase
+              .from(
+                'drop_likes'
+              )
+              .delete()
+              .eq(
+                'drop_id',
+                drop.id
+              )
+              .eq(
+                'user_id',
+                currentUserId
+              );
+
+          if (error) {
+            console.error(
+              'UNLIKE ERROR:',
+              error
+            );
+
+            Alert.alert(
+              'Error',
+              'Could not remove Like.'
+            );
+
+            return;
+          }
+
+          setLikedDropIds(
+            (
+              current
+            ) => {
+              const next =
+                new Set(
+                  current
+                );
+
+              next.delete(
+                drop.id
+              );
+
+              return next;
+            }
+          );
+
+          setLikeCounts(
+            (
+              current
+            ) => ({
+              ...current,
+
+              [drop.id]:
+                Math.max(
+                  0,
+                  (
+                    current[
+                      drop.id
+                    ] ?? 0
+                  ) - 1
+                ),
+            })
+          );
+
+          return;
+        }
+
+        const {
+          error,
+        } =
+          await supabase
+            .from(
+              'drop_likes'
+            )
+            .insert({
+              drop_id:
+                drop.id,
+
+              user_id:
+                currentUserId,
+            });
 
         if (error) {
           console.error(
-            'CANCEL JOIN ERROR:',
+            'LIKE ERROR:',
             error
           );
 
           Alert.alert(
             'Error',
-            'Could not cancel your request.'
+            'Could not Like this Drop.'
           );
 
           return;
         }
 
-        setJoinStatuses((current) => ({
-          ...current,
-          [drop.id]: 'none',
-        }));
+        setLikedDropIds(
+          (
+            current
+          ) => {
+            const next =
+              new Set(
+                current
+              );
 
-        return;
-      }
-
-      if (
-        currentStatus === 'accepted'
-      ) {
-        return;
-      }
-
-      // Если ранее был declined,
-      // удаляем старую строку и позволяем
-      // отправить новую заявку.
-      if (
-        currentStatus === 'declined'
-      ) {
-        const { error: deleteError } =
-          await supabase
-            .from('join_requests')
-            .delete()
-            .eq('drop_id', drop.id)
-            .eq(
-              'user_id',
-              currentUserId
+            next.add(
+              drop.id
             );
 
-        if (deleteError) {
-          Alert.alert(
-            'Error',
-            'Could not send a new request.'
+            return next;
+          }
+        );
+
+        setLikeCounts(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [drop.id]:
+              (
+                current[
+                  drop.id
+                ] ?? 0
+              ) + 1,
+          })
+        );
+      } finally {
+        setLikeLoadingId(
+          null
+        );
+      }
+    };
+
+  const handleJoin =
+    async (
+      drop: Drop
+    ) => {
+      if (
+        !currentUserId ||
+        joinLoadingId
+      ) {
+        return;
+      }
+
+      const currentStatus =
+        joinStatuses[
+          drop.id
+        ] ?? 'none';
+
+      try {
+        setJoinLoadingId(
+          drop.id
+        );
+
+        if (
+          currentStatus ===
+          'pending'
+        ) {
+          const {
+            error,
+          } =
+            await supabase
+              .from(
+                'join_requests'
+              )
+              .delete()
+              .eq(
+                'drop_id',
+                drop.id
+              )
+              .eq(
+                'user_id',
+                currentUserId
+              );
+
+          if (error) {
+            console.error(
+              'CANCEL JOIN ERROR:',
+              error
+            );
+
+            Alert.alert(
+              'Error',
+              'Could not cancel your request.'
+            );
+
+            return;
+          }
+
+          setJoinStatuses(
+            (
+              current
+            ) => ({
+              ...current,
+
+              [drop.id]:
+                'none',
+            })
           );
 
           return;
         }
-      }
 
-      const { error } = await supabase
-        .from('join_requests')
-        .insert({
-          drop_id: drop.id,
-          user_id: currentUserId,
-          status: 'pending',
-        });
+        if (
+          currentStatus ===
+          'accepted'
+        ) {
+          return;
+        }
 
-      if (error) {
-        console.error(
-          'JOIN REQUEST ERROR:',
-          error
+        if (
+          currentStatus ===
+          'declined'
+        ) {
+          const {
+            error:
+              deleteError,
+          } =
+            await supabase
+              .from(
+                'join_requests'
+              )
+              .delete()
+              .eq(
+                'drop_id',
+                drop.id
+              )
+              .eq(
+                'user_id',
+                currentUserId
+              );
+
+          if (
+            deleteError
+          ) {
+            Alert.alert(
+              'Error',
+              'Could not send a new request.'
+            );
+
+            return;
+          }
+        }
+
+        const {
+          error,
+        } =
+          await supabase
+            .from(
+              'join_requests'
+            )
+            .insert({
+              drop_id:
+                drop.id,
+
+              user_id:
+                currentUserId,
+
+              status:
+                'pending',
+            });
+
+        if (error) {
+          console.error(
+            'JOIN REQUEST ERROR:',
+            error
+          );
+
+          Alert.alert(
+            'Error',
+            'Could not send Join request.'
+          );
+
+          return;
+        }
+
+        setJoinStatuses(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [drop.id]:
+              'pending',
+          })
         );
-
-        Alert.alert(
-          'Error',
-          'Could not send Join request.'
+      } finally {
+        setJoinLoadingId(
+          null
         );
-
-        return;
       }
-
-      setJoinStatuses((current) => ({
-        ...current,
-        [drop.id]: 'pending',
-      }));
-    } finally {
-      setJoinLoadingId(null);
-    }
-  };
+    };
 
   const openProfile = (
     drop: Drop
   ) => {
     if (
-      drop.author_id === currentUserId
+      drop.author_id ===
+      currentUserId
     ) {
-      router.push('/profile');
+      router.push(
+        '/profile'
+      );
+
       return;
     }
 
     const username =
-      drop.profiles?.username;
+      drop.profiles
+        ?.username;
 
     if (!username) {
       return;
@@ -417,15 +833,27 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>
+    <View
+      style={
+        styles.container
+      }
+    >
+      <View
+        style={
+          styles.header
+        }
+      >
+        <Text
+          style={styles.logo}
+        >
           DROP
         </Text>
 
         <TouchableOpacity
           onPress={() =>
-            router.push('/create')
+            router.push(
+              '/create'
+            )
           }
         >
           <Text
@@ -441,15 +869,20 @@ export default function HomeScreen() {
       <ScrollView
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={
+              refreshing
+            }
             onRefresh={() =>
-              loadDrops(true)
+              loadDrops(
+                true
+              )
             }
             tintColor="#FFFFFF"
           />
         }
       >
-        {drops.length === 0 ? (
+        {drops.length ===
+        0 ? (
           <View
             style={
               styles.emptyContainer
@@ -472,234 +905,312 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          drops.map((drop) => {
-            const displayName =
-              drop.profiles
-                ?.display_name ||
-              'Unnamed user';
+          drops.map(
+            (drop) => {
+              const displayName =
+                drop
+                  .profiles
+                  ?.display_name ||
+                'Unnamed user';
 
-            const username =
-              drop.profiles
-                ?.username;
+              const username =
+                drop
+                  .profiles
+                  ?.username;
 
-            const avatarLetter =
-              displayName
-                .charAt(0)
-                .toUpperCase();
+              const avatarLetter =
+                displayName
+                  .charAt(0)
+                  .toUpperCase();
 
-            const isOwnDrop =
-              drop.author_id ===
-              currentUserId;
+              const isOwnDrop =
+                drop.author_id ===
+                currentUserId;
 
-            const time =
-              formatDropTime(
-                drop.created_at
-              );
+              const time =
+                formatDropTime(
+                  drop.created_at
+                );
 
-            const location =
-              drop.city ||
-              drop.profiles?.city;
+              const location =
+                drop.city ||
+                drop
+                  .profiles
+                  ?.city;
 
-            const joinStatus =
-              joinStatuses[drop.id] ??
-              'none';
+              const joinStatus =
+                joinStatuses[
+                  drop.id
+                ] ?? 'none';
 
-            const pendingCount =
-              pendingCounts[drop.id] ?? 0;
+              const pendingCount =
+                pendingCounts[
+                  drop.id
+                ] ?? 0;
 
-            return (
-              <View
-                key={drop.id}
-                style={styles.drop}
-              >
-                <Pressable
-                  style={
-                    styles.userRow
+              const isLiked =
+                likedDropIds.has(
+                  drop.id
+                );
+
+              const likeCount =
+                likeCounts[
+                  drop.id
+                ] ?? 0;
+
+              return (
+                <View
+                  key={
+                    drop.id
                   }
-                  onPress={() =>
-                    openProfile(drop)
+                  style={
+                    styles.drop
                   }
                 >
-                  <View
+                  <Pressable
                     style={
-                      styles.avatar
+                      styles.userRow
+                    }
+                    onPress={() =>
+                      openProfile(
+                        drop
+                      )
                     }
                   >
-                    <Text
+                    <View
                       style={
-                        styles.avatarText
+                        styles.avatar
                       }
                     >
-                      {avatarLetter}
-                    </Text>
-                  </View>
+                      <Text
+                        style={
+                          styles.avatarText
+                        }
+                      >
+                        {
+                          avatarLetter
+                        }
+                      </Text>
+                    </View>
 
-                  <View>
-                    <Text
-                      style={
-                        styles.name
-                      }
-                    >
-                      {displayName}
-                    </Text>
+                    <View>
+                      <Text
+                        style={
+                          styles.name
+                        }
+                      >
+                        {
+                          displayName
+                        }
+                      </Text>
 
-                    <Text
-                      style={
-                        styles.username
-                      }
-                    >
-                      {username
-                        ? `@${username}`
-                        : ''}
-                      {' · '}
-                      {time}
-                    </Text>
-                  </View>
-                </Pressable>
+                      <Text
+                        style={
+                          styles.username
+                        }
+                      >
+                        {username
+                          ? `@${username}`
+                          : ''}
+                        {' · '}
+                        {time}
+                      </Text>
+                    </View>
+                  </Pressable>
 
-                <Text
-                  style={
-                    styles.dropText
-                  }
-                >
-                  {drop.text}
-                </Text>
-
-                {!!location && (
                   <Text
                     style={
-                      styles.meta
+                      styles.dropText
                     }
                   >
-                    {location}
+                    {
+                      drop.text
+                    }
                   </Text>
-                )}
 
-                {!isOwnDrop && (
-                  <View
-                    style={
-                      styles.actions
-                    }
-                  >
-                    {drop.join_enabled && (
-                      <TouchableOpacity
-                        style={[
-                          styles.joinButton,
-
-                          joinStatus ===
-                            'pending' &&
-                            styles.requestedButton,
-
-                          joinStatus ===
-                            'accepted' &&
-                            styles.acceptedButton,
-                        ]}
-                        disabled={
-                          joinLoadingId ===
-                            drop.id ||
-                          joinStatus ===
-                            'accepted'
-                        }
-                        onPress={() =>
-                          handleJoin(drop)
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.joinText,
-
-                            joinStatus !==
-                              'none' &&
-                              styles.requestedText,
-                          ]}
-                        >
-                          {joinLoadingId ===
-                          drop.id
-                            ? '...'
-                            : joinStatus ===
-                                'pending'
-                              ? 'Requested'
-                              : joinStatus ===
-                                  'accepted'
-                                ? 'Joined'
-                                : joinStatus ===
-                                    'declined'
-                                  ? 'Join again'
-                                  : 'Join'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {drop.interested_enabled && (
-                      <TouchableOpacity>
-                        <Text
-                          style={
-                            styles.secondaryAction
-                          }
-                        >
-                          Interested
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {drop.reply_enabled && (
-                      <TouchableOpacity>
-                        <Text
-                          style={
-                            styles.secondaryAction
-                          }
-                        >
-                          Reply
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
-                {isOwnDrop && (
-                  <>
+                  {!!location && (
                     <Text
                       style={
-                        styles.ownDrop
+                        styles.meta
                       }
                     >
-                      Your Drop
+                      {
+                        location
+                      }
                     </Text>
+                  )}
 
-                    {pendingCount > 0 && (
-                      <TouchableOpacity
+                  {!isOwnDrop && (
+                    <View
+                      style={
+                        styles.actions
+                      }
+                    >
+                      {drop.join_enabled && (
+                        <TouchableOpacity
+                          style={[
+                            styles.joinButton,
+
+                            joinStatus ===
+                              'pending' &&
+                              styles.requestedButton,
+
+                            joinStatus ===
+                              'accepted' &&
+                              styles.acceptedButton,
+                          ]}
+                          disabled={
+                            joinLoadingId ===
+                              drop.id ||
+                            joinStatus ===
+                              'accepted'
+                          }
+                          onPress={() =>
+                            handleJoin(
+                              drop
+                            )
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.joinText,
+
+                              joinStatus !==
+                                'none' &&
+                                styles.requestedText,
+                            ]}
+                          >
+                            {joinLoadingId ===
+                            drop.id
+                              ? '...'
+                              : joinStatus ===
+                                  'pending'
+                                ? 'Requested'
+                                : joinStatus ===
+                                    'accepted'
+                                  ? 'Joined'
+                                  : joinStatus ===
+                                      'declined'
+                                    ? 'Join again'
+                                    : 'Join'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {drop.interested_enabled && (
+                        <TouchableOpacity
+                          disabled={
+                            likeLoadingId ===
+                            drop.id
+                          }
+                          onPress={() =>
+                            handleLike(
+                              drop
+                            )
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.secondaryAction,
+
+                              isLiked &&
+                                styles.likedAction,
+                            ]}
+                          >
+                            {likeLoadingId ===
+                            drop.id
+                              ? '...'
+                              : isLiked
+                                ? `♥ ${likeCount}`
+                                : `♡ ${likeCount}`}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {drop.reply_enabled && (
+                        <TouchableOpacity>
+                          <Text
+                            style={
+                              styles.secondaryAction
+                            }
+                          >
+                            Reply
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+
+                  {isOwnDrop && (
+                    <>
+                      <View
                         style={
-                          styles.requestsButton
-                        }
-                        onPress={() =>
-                          router.push({
-                            pathname:
-                              '/requests',
-                            params: {
-                              dropId:
-                                drop.id,
-                            },
-                          })
+                          styles.ownDropRow
                         }
                       >
                         <Text
                           style={
-                            styles.requestsText
+                            styles.ownDrop
                           }
                         >
-                          {pendingCount}{' '}
-                          {pendingCount === 1
-                            ? 'request'
-                            : 'requests'}
-                          {'  →'}
+                          Your Drop
                         </Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-              </View>
-            );
-          })
+
+                        <Text
+                          style={
+                            styles.ownLikeCount
+                          }
+                        >
+                          ♥{' '}
+                          {
+                            likeCount
+                          }
+                        </Text>
+                      </View>
+
+                      {pendingCount >
+                        0 && (
+                        <TouchableOpacity
+                          style={
+                            styles.requestsButton
+                          }
+                          onPress={() =>
+                            router.push(
+                              {
+                                pathname:
+                                  '/requests',
+
+                                params:
+                                  {
+                                    dropId:
+                                      drop.id,
+                                  },
+                              }
+                            )
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.requestsText
+                            }
+                          >
+                            {
+                              pendingCount
+                            }{' '}
+                            {pendingCount ===
+                            1
+                              ? 'request'
+                              : 'requests'}
+                            {'  →'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            }
+          )
         )}
       </ScrollView>
     </View>
@@ -718,7 +1229,8 @@ const styles =
       flex: 1,
       backgroundColor:
         '#000000',
-      alignItems: 'center',
+      alignItems:
+        'center',
       justifyContent:
         'center',
     },
@@ -730,10 +1242,12 @@ const styles =
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
-      flexDirection: 'row',
+      flexDirection:
+        'row',
       justifyContent:
         'space-between',
-      alignItems: 'center',
+      alignItems:
+        'center',
     },
 
     logo: {
@@ -758,8 +1272,10 @@ const styles =
     },
 
     userRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
     },
 
     avatar: {
@@ -768,7 +1284,8 @@ const styles =
       borderRadius: 21,
       backgroundColor:
         '#222222',
-      alignItems: 'center',
+      alignItems:
+        'center',
       justifyContent:
         'center',
       marginRight: 12,
@@ -806,8 +1323,10 @@ const styles =
     },
 
     actions: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
       gap: 22,
       marginTop: 18,
     },
@@ -851,15 +1370,34 @@ const styles =
       fontSize: 14,
     },
 
+    likedAction: {
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+
+    ownDropRow: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      gap: 14,
+      marginTop: 14,
+    },
+
     ownDrop: {
       color: '#555555',
       fontSize: 12,
-      marginTop: 14,
+    },
+
+    ownLikeCount: {
+      color: '#777777',
+      fontSize: 12,
     },
 
     requestsButton: {
       marginTop: 12,
-      alignSelf: 'flex-start',
+      alignSelf:
+        'flex-start',
     },
 
     requestsText: {
@@ -871,7 +1409,8 @@ const styles =
     emptyContainer: {
       paddingHorizontal: 20,
       paddingTop: 60,
-      alignItems: 'center',
+      alignItems:
+        'center',
     },
 
     emptyTitle: {

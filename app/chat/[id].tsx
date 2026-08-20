@@ -82,6 +82,59 @@ export default function ChatScreen() {
     loadChat();
   }, [id]);
 
+  useEffect(() => {
+    if (!conversation?.id) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(
+        `conversation-${conversation.id}`
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        (payload) => {
+          const newMessage =
+            payload.new as Message;
+
+          setMessages((current) => {
+            const alreadyExists =
+              current.some(
+                (message) =>
+                  message.id ===
+                  newMessage.id
+              );
+
+            if (alreadyExists) {
+              return current;
+            }
+
+            return [
+              ...current,
+              newMessage,
+            ];
+          });
+
+          setTimeout(() => {
+            scrollRef.current?.scrollToEnd({
+              animated: true,
+            });
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversation?.id]);
+
   const loadChat = async () => {
     if (!id) {
       return;
@@ -285,10 +338,23 @@ export default function ChatScreen() {
       }
 
       setMessages(
-        (current) => [
-          ...current,
-          data,
-        ]
+        (current) => {
+          const alreadyExists =
+            current.some(
+              (message) =>
+                message.id ===
+                data.id
+            );
+
+          if (alreadyExists) {
+            return current;
+          }
+
+          return [
+            ...current,
+            data,
+          ];
+        }
       );
 
       setText('');
