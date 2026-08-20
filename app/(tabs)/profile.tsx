@@ -1,5 +1,12 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import {
+  router,
+  useFocusEffect,
+} from 'expo-router';
+
+import {
+  useCallback,
+  useState,
+} from 'react';
 
 import {
   ActivityIndicator,
@@ -11,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
 
@@ -21,8 +29,6 @@ type Profile = {
   bio: string | null;
   city: string | null;
   avatar_url: string | null;
-  show_followers: boolean;
-  show_following: boolean;
 };
 
 type Drop = {
@@ -32,16 +38,24 @@ type Drop = {
   created_at: string;
 };
 
-function formatDropTime(createdAt: string) {
-  const created = new Date(createdAt);
-  const now = new Date();
+function formatDropTime(
+  createdAt: string
+) {
+  const created =
+    new Date(createdAt);
+
+  const now =
+    new Date();
 
   const difference =
-    now.getTime() - created.getTime();
+    now.getTime() -
+    created.getTime();
 
-  const minutes = Math.floor(
-    difference / (1000 * 60)
-  );
+  const minutes =
+    Math.floor(
+      difference /
+        (1000 * 60)
+    );
 
   if (minutes < 1) {
     return 'now';
@@ -51,177 +65,223 @@ function formatDropTime(createdAt: string) {
     return `${minutes}m`;
   }
 
-  const hours = Math.floor(
-    minutes / 60
-  );
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
 
   if (hours < 24) {
     return `${hours}h`;
   }
 
-  const days = Math.floor(
-    hours / 24
-  );
+  const days =
+    Math.floor(
+      hours / 24
+    );
 
   return `${days}d`;
 }
 
 export default function ProfileScreen() {
-  const [profile, setProfile] =
-    useState<Profile | null>(null);
+  const [
+    profile,
+    setProfile,
+  ] =
+    useState<Profile | null>(
+      null
+    );
 
-  const [myDrops, setMyDrops] =
+  const [
+    myDrops,
+    setMyDrops,
+  ] =
     useState<Drop[]>([]);
 
-  const [followersCount, setFollowersCount] =
+  const [
+    followersCount,
+    setFollowersCount,
+  ] =
     useState(0);
 
-  const [followingCount, setFollowingCount] =
+  const [
+    followingCount,
+    setFollowingCount,
+  ] =
     useState(0);
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
+  const loadProfile =
+    async () => {
+      try {
+        setLoading(true);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: userError,
+        } =
+          await supabase.auth.getUser();
 
-      if (userError || !user) {
-        Alert.alert(
-          'Profile error',
-          'Could not find the current user.'
-        );
+        if (
+          userError ||
+          !user
+        ) {
+          Alert.alert(
+            'Profile error',
+            'Could not find the current user.'
+          );
 
-        return;
-      }
+          return;
+        }
 
-      const {
-        data: profileData,
-        error: profileError,
-      } = await supabase
-        .from('profiles')
-        .select(`
-          id,
-          username,
-          display_name,
-          bio,
-          city,
-          avatar_url,
-          show_followers,
-          show_following
-        `)
-        .eq('id', user.id)
-        .single();
+        const {
+          data: profileData,
+          error:
+            profileError,
+        } =
+          await supabase
+            .from('profiles')
+            .select(`
+              id,
+              username,
+              display_name,
+              bio,
+              city,
+              avatar_url
+            `)
+            .eq(
+              'id',
+              user.id
+            )
+            .single();
 
-      if (profileError) {
-        console.error(
-          'LOAD PROFILE ERROR:',
+        if (
           profileError
-        );
+        ) {
+          console.error(
+            'LOAD PROFILE ERROR:',
+            profileError
+          );
 
-        Alert.alert(
-          'Profile error',
-          profileError.message
-        );
+          Alert.alert(
+            'Profile error',
+            profileError.message
+          );
 
-        return;
-      }
+          return;
+        }
 
-      const {
-        count: followers,
-        error: followersError,
-      } = await supabase
-        .from('follows')
-        .select('*', {
-          count: 'exact',
-          head: true,
-        })
-        .eq('following_id', user.id);
+        const {
+          count: followers,
+          error:
+            followersError,
+        } =
+          await supabase
+            .from('follows')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'following_id',
+              user.id
+            );
 
-      if (followersError) {
-        console.error(
-          'FOLLOWERS COUNT ERROR:',
+        if (
           followersError
-        );
-      }
+        ) {
+          console.error(
+            'FOLLOWERS COUNT ERROR:',
+            followersError
+          );
+        }
 
-      const {
-        count: following,
-        error: followingError,
-      } = await supabase
-        .from('follows')
-        .select('*', {
-          count: 'exact',
-          head: true,
-        })
-        .eq('follower_id', user.id);
+        const {
+          count: following,
+          error:
+            followingError,
+        } =
+          await supabase
+            .from('follows')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'follower_id',
+              user.id
+            );
 
-      if (followingError) {
-        console.error(
-          'FOLLOWING COUNT ERROR:',
+        if (
           followingError
+        ) {
+          console.error(
+            'FOLLOWING COUNT ERROR:',
+            followingError
+          );
+        }
+
+        const {
+          data: dropData,
+          error: dropsError,
+        } =
+          await supabase
+            .from('drops')
+            .select(`
+              id,
+              text,
+              city,
+              created_at
+            `)
+            .eq(
+              'author_id',
+              user.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending:
+                  false,
+              }
+            );
+
+        if (dropsError) {
+          console.error(
+            'PROFILE DROPS ERROR:',
+            dropsError
+          );
+
+          return;
+        }
+
+        setProfile(
+          profileData
         );
-      }
 
-      const {
-        data: dropData,
-        error: dropsError,
-      } = await supabase
-        .from('drops')
-        .select(`
-          id,
-          text,
-          city,
-          created_at
-        `)
-        .eq('author_id', user.id)
-        .order('created_at', {
-          ascending: false,
-        });
+        setFollowersCount(
+          followers ?? 0
+        );
 
-      if (dropsError) {
+        setFollowingCount(
+          following ?? 0
+        );
+
+        setMyDrops(
+          dropData ?? []
+        );
+      } catch (error) {
         console.error(
-          'PROFILE DROPS ERROR:',
-          dropsError
+          'PROFILE ERROR:',
+          error
         );
-
-        Alert.alert(
-          'Error',
-          'Could not load your Drops.'
-        );
-
-        return;
+      } finally {
+        setLoading(false);
       }
-
-      setProfile(profileData);
-      setFollowersCount(
-        followers ?? 0
-      );
-      setFollowingCount(
-        following ?? 0
-      );
-      setMyDrops(
-        dropData ?? []
-      );
-    } catch (error) {
-      console.error(
-        'PROFILE ERROR:',
-        error
-      );
-
-      Alert.alert(
-        'Profile error',
-        'Something went wrong while loading your profile.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   useFocusEffect(
     useCallback(() => {
@@ -229,36 +289,21 @@ export default function ProfileScreen() {
     }, [])
   );
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } =
-              await supabase.auth.signOut();
+  const openConnections = (
+    type:
+      | 'followers'
+      | 'following'
+  ) => {
+    if (
+      !profile?.username
+    ) {
+      return;
+    }
 
-            if (error) {
-              console.error(
-                'LOGOUT ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Log out error',
-                error.message
-              );
-            }
-          },
-        },
-      ]
+    router.push(
+      `/connections/${type}?username=${encodeURIComponent(
+        profile.username
+      )}`
     );
   };
 
@@ -282,17 +327,25 @@ export default function ProfileScreen() {
         }
       >
         <Text
-          style={styles.errorText}
+          style={
+            styles.errorText
+          }
         >
           Profile could not be loaded.
         </Text>
 
         <Pressable
-          style={styles.retryButton}
-          onPress={loadProfile}
+          style={
+            styles.retryButton
+          }
+          onPress={
+            loadProfile
+          }
         >
           <Text
-            style={styles.retryText}
+            style={
+              styles.retryText
+            }
           >
             Try again
           </Text>
@@ -306,91 +359,171 @@ export default function ProfileScreen() {
     'Unnamed user';
 
   return (
-    <View style={styles.container}>
+    <View
+      style={
+        styles.container
+      }
+    >
       <ScrollView>
-        <View style={styles.header}>
-          <Text style={styles.title}>
+        <View
+          style={
+            styles.header
+          }
+        >
+          <Text
+            style={
+              styles.title
+            }
+          >
             Profile
           </Text>
+
+          <Pressable
+            onPress={() =>
+              router.push(
+                '/settings'
+              )
+            }
+            hitSlop={12}
+            style={
+              styles.settingsIconButton
+            }
+          >
+            <IconSymbol
+              name="gearshape"
+              size={21}
+              color="#FFFFFF"
+            />
+          </Pressable>
         </View>
 
-        <View style={styles.profile}>
+        <View
+          style={
+            styles.profile
+          }
+        >
           <UserAvatar
-            uri={profile.avatar_url}
-            name={displayName}
+            uri={
+              profile.avatar_url
+            }
+            name={
+              displayName
+            }
             size={82}
           />
 
-          <Text style={styles.name}>
+          <Text
+            style={
+              styles.name
+            }
+          >
             {displayName}
           </Text>
 
           <Text
-            style={styles.username}
+            style={
+              styles.username
+            }
           >
             @{profile.username}
           </Text>
 
           {!!profile.bio && (
-            <Text style={styles.bio}>
+            <Text
+              style={
+                styles.bio
+              }
+            >
               {profile.bio}
             </Text>
           )}
 
           {!!profile.city && (
-            <Text style={styles.city}>
+            <Text
+              style={
+                styles.city
+              }
+            >
               {profile.city}
             </Text>
           )}
 
-          <View style={styles.stats}>
-            {profile.show_followers && (
-              <View style={styles.stat}>
-                <Text
-                  style={
-                    styles.statNumber
-                  }
-                >
-                  {followersCount}
-                </Text>
-
-                <Text
-                  style={
-                    styles.statLabel
-                  }
-                >
-                  Followers
-                </Text>
-              </View>
-            )}
-
-            {profile.show_following && (
-              <View style={styles.stat}>
-                <Text
-                  style={
-                    styles.statNumber
-                  }
-                >
-                  {followingCount}
-                </Text>
-
-                <Text
-                  style={
-                    styles.statLabel
-                  }
-                >
-                  Following
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.stat}>
+          <View
+            style={
+              styles.stats
+            }
+          >
+            <Pressable
+              style={
+                styles.stat
+              }
+              onPress={() =>
+                openConnections(
+                  'followers'
+                )
+              }
+            >
               <Text
                 style={
                   styles.statNumber
                 }
               >
-                {myDrops.length}
+                {
+                  followersCount
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.statLabel
+                }
+              >
+                Followers
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={
+                styles.stat
+              }
+              onPress={() =>
+                openConnections(
+                  'following'
+                )
+              }
+            >
+              <Text
+                style={
+                  styles.statNumber
+                }
+              >
+                {
+                  followingCount
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.statLabel
+                }
+              >
+                Following
+              </Text>
+            </Pressable>
+
+            <View
+              style={
+                styles.stat
+              }
+            >
+              <Text
+                style={
+                  styles.statNumber
+                }
+              >
+                {
+                  myDrops.length
+                }
               </Text>
 
               <Text
@@ -416,26 +549,11 @@ export default function ProfileScreen() {
             }
           >
             <Text
-              style={styles.editText}
-            >
-              Edit profile
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.logoutButton,
-              pressed &&
-                styles.logoutButtonPressed,
-            ]}
-            onPress={handleLogout}
-          >
-            <Text
               style={
-                styles.logoutText
+                styles.editText
               }
             >
-              Log out
+              Edit profile
             </Text>
           </Pressable>
         </View>
@@ -448,234 +566,231 @@ export default function ProfileScreen() {
           YOUR DROPS
         </Text>
 
-        {myDrops.length === 0 ? (
+        {myDrops.length ===
+        0 ? (
           <Text
-            style={styles.emptyText}
+            style={
+              styles.emptyText
+            }
           >
             You haven't dropped anything yet.
           </Text>
         ) : (
-          myDrops.map((drop) => (
-            <View
-              key={drop.id}
-              style={styles.drop}
-            >
-              <Text
+          myDrops.map(
+            (drop) => (
+              <View
+                key={
+                  drop.id
+                }
                 style={
-                  styles.dropText
+                  styles.drop
                 }
               >
-                {drop.text}
-              </Text>
+                <Text
+                  style={
+                    styles.dropText
+                  }
+                >
+                  {drop.text}
+                </Text>
 
-              <Text
-                style={
-                  styles.dropMeta
-                }
-              >
-                {drop.city
-                  ? `${drop.city} · `
-                  : ''}
-                {formatDropTime(
-                  drop.created_at
-                )}
-              </Text>
-            </View>
-          ))
+                <Text
+                  style={
+                    styles.dropMeta
+                  }
+                >
+                  {drop.city
+                    ? `${drop.city} · `
+                    : ''}
+
+                  {formatDropTime(
+                    drop.created_at
+                  )}
+                </Text>
+              </View>
+            )
+          )
         )}
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor:
+        '#000000',
+    },
 
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor:
+        '#000000',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
 
-  errorText: {
-    color: '#777777',
-    fontSize: 15,
-  },
+    errorText: {
+      color: '#777777',
+      fontSize: 15,
+    },
 
-  retryButton: {
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
+    retryButton: {
+      marginTop: 16,
+      borderWidth: 1,
+      borderColor:
+        '#2A2A2A',
+      borderRadius: 14,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+    },
 
-  retryText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+    retryText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '600',
+    },
 
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1A1A1A',
-  },
+    header: {
+      paddingTop: 60,
+      paddingHorizontal: 20,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        '#1A1A1A',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+    },
 
-  title: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-  },
+    title: {
+      color: '#FFFFFF',
+      fontSize: 28,
+      fontWeight: '700',
+    },
 
-  profile: {
-    paddingHorizontal: 20,
-    paddingVertical: 26,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1A1A1A',
-  },
+    settingsIconButton: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
 
-  avatar: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    backgroundColor: '#222222',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    profile: {
+      paddingHorizontal: 20,
+      paddingVertical: 26,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        '#1A1A1A',
+    },
 
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontWeight: '600',
-  },
+    name: {
+      color: '#FFFFFF',
+      fontSize: 24,
+      fontWeight: '700',
+      marginTop: 20,
+    },
 
-  name: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: 20,
-  },
+    username: {
+      color: '#666666',
+      fontSize: 14,
+      marginTop: 3,
+    },
 
-  username: {
-    color: '#666666',
-    fontSize: 14,
-    marginTop: 3,
-  },
+    bio: {
+      color: '#CCCCCC',
+      fontSize: 15,
+      lineHeight: 21,
+      marginTop: 16,
+    },
 
-  bio: {
-    color: '#CCCCCC',
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 16,
-  },
+    city: {
+      color: '#666666',
+      fontSize: 14,
+      marginTop: 8,
+    },
 
-  city: {
-    color: '#666666',
-    fontSize: 14,
-    marginTop: 8,
-  },
+    stats: {
+      flexDirection: 'row',
+      gap: 30,
+      marginTop: 22,
+    },
 
-  stats: {
-    flexDirection: 'row',
-    gap: 30,
-    marginTop: 22,
-  },
+    stat: {
+      flexDirection: 'row',
+      gap: 5,
+    },
 
-  stat: {
-    flexDirection: 'row',
-    gap: 5,
-  },
+    statNumber: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '600',
+    },
 
-  statNumber: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+    statLabel: {
+      color: '#666666',
+      fontSize: 14,
+    },
 
-  statLabel: {
-    color: '#666666',
-    fontSize: 14,
-  },
+    editButton: {
+      marginTop: 26,
+      height: 46,
+      borderRadius: 14,
+      backgroundColor:
+        '#FFFFFF',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
 
-  editButton: {
-    marginTop: 26,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    editButtonPressed: {
+      opacity: 0.75,
+    },
 
-  editButtonPressed: {
-    opacity: 0.75,
-  },
+    editText: {
+      color: '#000000',
+      fontSize: 15,
+      fontWeight: '600',
+    },
 
-  editText: {
-    color: '#000000',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+    sectionTitle: {
+      color: '#555555',
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1.5,
+      paddingHorizontal: 20,
+      paddingTop: 22,
+      paddingBottom: 8,
+    },
 
-  logoutButton: {
-    marginTop: 12,
-    height: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    drop: {
+      paddingHorizontal: 20,
+      paddingVertical: 18,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        '#1A1A1A',
+    },
 
-  logoutButtonPressed: {
-    opacity: 0.6,
-  },
+    dropText: {
+      color: '#FFFFFF',
+      fontSize: 18,
+      lineHeight: 25,
+    },
 
-  logoutText: {
-    color: '#FF5A5F',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+    dropMeta: {
+      color: '#666666',
+      fontSize: 13,
+      marginTop: 8,
+    },
 
-  sectionTitle: {
-    color: '#555555',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 8,
-  },
-
-  drop: {
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1A1A1A',
-  },
-
-  dropText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    lineHeight: 25,
-  },
-
-  dropMeta: {
-    color: '#666666',
-    fontSize: 13,
-    marginTop: 8,
-  },
-
-  emptyText: {
-    color: '#555555',
-    fontSize: 14,
-    padding: 20,
-  },
-});
+    emptyText: {
+      color: '#555555',
+      fontSize: 14,
+      padding: 20,
+    },
+  });

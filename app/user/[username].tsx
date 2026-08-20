@@ -4,7 +4,10 @@ import {
   useLocalSearchParams,
 } from 'expo-router';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useState,
+} from 'react';
 
 import {
   ActivityIndicator,
@@ -16,19 +19,78 @@ import {
   View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
-import { useDropStore } from '@/store/drops';
 
-type Profile = {
+type PublicProfile = {
   id: string;
   username: string | null;
   display_name: string | null;
   bio: string | null;
   city: string | null;
   avatar_url: string | null;
-  show_followers: boolean;
-  show_following: boolean;
+
+  followers_count: number;
+  following_count: number;
+
+  is_following: boolean;
+  is_followed_by: boolean;
+  is_mutual: boolean;
+
+  can_view_followers: boolean;
+  can_view_following: boolean;
 };
+
+type Drop = {
+  id: string;
+  text: string;
+  city: string | null;
+  created_at: string;
+};
+
+function formatDropTime(
+  createdAt: string
+) {
+  const created =
+    new Date(createdAt);
+
+  const now =
+    new Date();
+
+  const difference =
+    now.getTime() -
+    created.getTime();
+
+  const minutes =
+    Math.floor(
+      difference /
+        (1000 * 60)
+    );
+
+  if (minutes < 1) {
+    return 'now';
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+
+  const days =
+    Math.floor(
+      hours / 24
+    );
+
+  return `${days}d`;
+}
 
 export default function UserProfileScreen() {
   const { username } =
@@ -36,271 +98,283 @@ export default function UserProfileScreen() {
       username: string;
     }>();
 
-  const drops = useDropStore(
-    (state) => state.drops
-  );
+  const cleanUsername =
+    username?.replace(
+      '@',
+      ''
+    ) ?? '';
 
-  const [profile, setProfile] =
-    useState<Profile | null>(null);
+  const [
+    profile,
+    setProfile,
+  ] =
+    useState<
+      PublicProfile | null
+    >(null);
 
-  const [currentUserId, setCurrentUserId] =
-    useState<string | null>(null);
+  const [
+    userDrops,
+    setUserDrops,
+  ] =
+    useState<Drop[]>([]);
 
-  const [followersCount, setFollowersCount] =
-    useState(0);
+  const [
+    currentUserId,
+    setCurrentUserId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [followingCount, setFollowingCount] =
-    useState(0);
-
-  const [isFollowing, setIsFollowing] =
-    useState(false);
-
-  const [isFollowedBy, setIsFollowedBy] =
-    useState(false);
-
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [followLoading, setFollowLoading] =
+  const [
+    followLoading,
+    setFollowLoading,
+  ] =
     useState(false);
-
-  const cleanUsername =
-    username?.replace('@', '') ?? '';
 
   useEffect(() => {
     loadProfile();
   }, [cleanUsername]);
 
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        Alert.alert(
-          'Error',
-          'Could not find the current user.'
-        );
-
-        return;
-      }
-
-      setCurrentUserId(user.id);
-
-      const {
-        data: profileData,
-        error: profileError,
-      } = await supabase
-        .from('profiles')
-        .select(`
-          id,
-          username,
-          display_name,
-          bio,
-          city,
-          avatar_url,
-          show_followers,
-          show_following
-        `)
-        .eq('username', cleanUsername)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error(
-          'PUBLIC PROFILE ERROR:',
-          profileError
-        );
-
-        Alert.alert(
-          'Error',
-          'Could not load this profile.'
-        );
-
-        return;
-      }
-
-      if (!profileData) {
+  const loadProfile =
+    async () => {
+      if (!cleanUsername) {
         setProfile(null);
+        setLoading(false);
         return;
       }
 
-      setProfile(profileData);
+      try {
+        setLoading(true);
 
-      const {
-        count: followers,
-      } = await supabase
-        .from('follows')
-        .select('*', {
-          count: 'exact',
-          head: true,
-        })
-        .eq(
-          'following_id',
-          profileData.id
-        );
+        const {
+          data: { user },
+          error: userError,
+        } =
+          await supabase.auth.getUser();
 
-      const {
-        count: following,
-      } = await supabase
-        .from('follows')
-        .select('*', {
-          count: 'exact',
-          head: true,
-        })
-        .eq(
-          'follower_id',
-          profileData.id
-        );
-
-      setFollowersCount(
-        followers ?? 0
-      );
-
-      setFollowingCount(
-        following ?? 0
-      );
-
-      const {
-        data: outgoingFollow,
-      } = await supabase
-        .from('follows')
-        .select('follower_id')
-        .eq(
-          'follower_id',
-          user.id
-        )
-        .eq(
-          'following_id',
-          profileData.id
-        )
-        .maybeSingle();
-
-      const {
-        data: incomingFollow,
-      } = await supabase
-        .from('follows')
-        .select('follower_id')
-        .eq(
-          'follower_id',
-          profileData.id
-        )
-        .eq(
-          'following_id',
-          user.id
-        )
-        .maybeSingle();
-
-      setIsFollowing(
-        !!outgoingFollow
-      );
-
-      setIsFollowedBy(
-        !!incomingFollow
-      );
-    } catch (error) {
-      console.error(
-        'PUBLIC PROFILE LOAD ERROR:',
-        error
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleFollow = async () => {
-    if (
-      !profile ||
-      !currentUserId ||
-      followLoading
-    ) {
-      return;
-    }
-
-    try {
-      setFollowLoading(true);
-
-      if (isFollowing) {
-        const { error } =
-          await supabase
-            .from('follows')
-            .delete()
-            .eq(
-              'follower_id',
-              currentUserId
-            )
-            .eq(
-              'following_id',
-              profile.id
-            );
-
-        if (error) {
+        if (
+          userError ||
+          !user
+        ) {
           Alert.alert(
             'Error',
-            'Could not unfollow this user.'
+            'Could not find the current user.'
           );
 
           return;
         }
 
-        setIsFollowing(false);
-
-        setFollowersCount(
-          (current) =>
-            Math.max(0, current - 1)
+        setCurrentUserId(
+          user.id
         );
 
+        const {
+          data,
+          error,
+        } =
+          await supabase.rpc(
+            'get_public_profile',
+            {
+              target_username:
+                cleanUsername,
+            }
+          );
+
+        if (error) {
+          console.error(
+            'PUBLIC PROFILE RPC ERROR:',
+            error
+          );
+
+          Alert.alert(
+            'Error',
+            'Could not load this profile.'
+          );
+
+          return;
+        }
+
+        const loadedProfile =
+          (
+            data?.[0] ??
+            null
+          ) as PublicProfile | null;
+
+        if (!loadedProfile) {
+          setProfile(null);
+          setUserDrops([]);
+          return;
+        }
+
+        setProfile(
+          loadedProfile
+        );
+
+        const {
+          data: dropData,
+          error: dropsError,
+        } =
+          await supabase
+            .from('drops')
+            .select(`
+              id,
+              text,
+              city,
+              created_at
+            `)
+            .eq(
+              'author_id',
+              loadedProfile.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending:
+                  false,
+              }
+            );
+
+        if (dropsError) {
+          console.error(
+            'PUBLIC PROFILE DROPS ERROR:',
+            dropsError
+          );
+        } else {
+          setUserDrops(
+            dropData ?? []
+          );
+        }
+      } catch (error) {
+        console.error(
+          'PUBLIC PROFILE LOAD ERROR:',
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  const toggleFollow =
+    async () => {
+      if (
+        !profile ||
+        !currentUserId ||
+        currentUserId ===
+          profile.id ||
+        followLoading
+      ) {
         return;
       }
 
-      const { error } =
-        await supabase
-          .from('follows')
-          .insert({
-            follower_id:
-              currentUserId,
-
-            following_id:
-              profile.id,
-          });
-
-      if (error) {
-        Alert.alert(
-          'Error',
-          'Could not follow this user.'
+      try {
+        setFollowLoading(
+          true
         );
 
-        return;
+        if (
+          profile.is_following
+        ) {
+          const {
+            error,
+          } =
+            await supabase
+              .from('follows')
+              .delete()
+              .eq(
+                'follower_id',
+                currentUserId
+              )
+              .eq(
+                'following_id',
+                profile.id
+              );
+
+          if (error) {
+            Alert.alert(
+              'Error',
+              'Could not unfollow this user.'
+            );
+
+            return;
+          }
+        } else {
+          const {
+            error,
+          } =
+            await supabase
+              .from('follows')
+              .insert({
+                follower_id:
+                  currentUserId,
+
+                following_id:
+                  profile.id,
+              });
+
+          if (error) {
+            Alert.alert(
+              'Error',
+              'Could not follow this user.'
+            );
+
+            return;
+          }
+        }
+
+        /*
+         * Reload through the RPC.
+         * This updates:
+         * count + mutual + Bio/City privacy
+         * in one shot.
+         */
+        await loadProfile();
+      } finally {
+        setFollowLoading(
+          false
+        );
       }
+    };
 
-      setIsFollowing(true);
-
-      setFollowersCount(
-        (current) =>
-          current + 1
-      );
-    } finally {
-      setFollowLoading(false);
+  const openConnections = (
+    type:
+      | 'followers'
+      | 'following'
+  ) => {
+    if (
+      !profile?.username
+    ) {
+      return;
     }
-  };
 
-  const userDrops =
-    useMemo(() => {
-      if (!profile?.username) {
-        return [];
-      }
+    const allowed =
+      type === 'followers'
+        ? profile.can_view_followers
+        : profile.can_view_following;
 
-      return drops.filter(
-        (drop) =>
-          drop.username.replace(
-            '@',
-            ''
-          ) === profile.username
+    if (!allowed) {
+      Alert.alert(
+        type === 'followers'
+          ? 'Followers are private'
+          : 'Following is private',
+        'This user has hidden this list.'
       );
-    }, [drops, profile]);
+
+      return;
+    }
+
+    router.push(
+      `/connections/${type}?username=${encodeURIComponent(
+        profile.username
+      )}`
+    );
+  };
 
   if (loading) {
     return (
@@ -317,7 +391,9 @@ export default function UserProfileScreen() {
   if (!profile) {
     return (
       <View
-        style={styles.container}
+        style={
+          styles.container
+        }
       >
         <Stack.Screen
           options={{
@@ -326,7 +402,9 @@ export default function UserProfileScreen() {
         />
 
         <Pressable
-          style={styles.backArea}
+          style={
+            styles.backArea
+          }
           onPress={() =>
             router.back()
           }
@@ -341,7 +419,9 @@ export default function UserProfileScreen() {
         </Pressable>
 
         <Text
-          style={styles.notFound}
+          style={
+            styles.notFound
+          }
         >
           User not found.
         </Text>
@@ -353,18 +433,15 @@ export default function UserProfileScreen() {
     profile.display_name ||
     'Unnamed user';
 
-  const avatarLetter =
-    displayName
-      .charAt(0)
-      .toUpperCase();
-
-  const isMutual =
-    isFollowing &&
-    isFollowedBy;
+  const isOwner =
+    currentUserId ===
+    profile.id;
 
   return (
     <View
-      style={styles.container}
+      style={
+        styles.container
+      }
     >
       <Stack.Screen
         options={{
@@ -372,7 +449,11 @@ export default function UserProfileScreen() {
         }}
       />
 
-      <View style={styles.header}>
+      <View
+        style={
+          styles.header
+        }
+      >
         <Pressable
           onPress={() =>
             router.back()
@@ -404,30 +485,31 @@ export default function UserProfileScreen() {
 
       <ScrollView>
         <View
-          style={styles.profile}
+          style={
+            styles.profile
+          }
         >
           <View
-            style={styles.topRow}
+            style={
+              styles.topRow
+            }
           >
-            <View
-              style={styles.avatar}
-            >
-              <Text
-                style={
-                  styles.avatarText
-                }
-              >
-                {avatarLetter}
-              </Text>
-            </View>
+            <UserAvatar
+              uri={
+                profile.avatar_url
+              }
+              name={
+                displayName
+              }
+              size={80}
+            />
 
-            {currentUserId !==
-              profile.id && (
+            {!isOwner && (
               <Pressable
                 style={[
                   styles.followButton,
 
-                  isFollowing &&
+                  profile.is_following &&
                     styles.followingButton,
                 ]}
                 onPress={
@@ -441,15 +523,15 @@ export default function UserProfileScreen() {
                   style={[
                     styles.followText,
 
-                    isFollowing &&
+                    profile.is_following &&
                       styles.followingText,
                   ]}
                 >
                   {followLoading
                     ? '...'
-                    : isMutual
+                    : profile.is_mutual
                       ? 'Mutual'
-                      : isFollowing
+                      : profile.is_following
                         ? 'Following'
                         : 'Follow'}
                 </Text>
@@ -458,7 +540,9 @@ export default function UserProfileScreen() {
           </View>
 
           <Text
-            style={styles.name}
+            style={
+              styles.name
+            }
           >
             {displayName}
           </Text>
@@ -473,7 +557,9 @@ export default function UserProfileScreen() {
 
           {!!profile.bio && (
             <Text
-              style={styles.bio}
+              style={
+                styles.bio
+              }
             >
               {profile.bio}
             </Text>
@@ -481,25 +567,39 @@ export default function UserProfileScreen() {
 
           {!!profile.city && (
             <Text
-              style={styles.city}
+              style={
+                styles.city
+              }
             >
               {profile.city}
             </Text>
           )}
 
           <View
-            style={styles.stats}
+            style={
+              styles.stats
+            }
           >
-            {profile.show_followers && (
-              <View
-                style={styles.stat}
+            {(isOwner ||
+              profile.can_view_followers) && (
+              <Pressable
+                style={
+                  styles.stat
+                }
+                onPress={() =>
+                  openConnections(
+                    'followers'
+                  )
+                }
               >
                 <Text
                   style={
                     styles.statNumber
                   }
                 >
-                  {followersCount}
+                  {
+                    profile.followers_count
+                  }
                 </Text>
 
                 <Text
@@ -509,19 +609,29 @@ export default function UserProfileScreen() {
                 >
                   Followers
                 </Text>
-              </View>
+              </Pressable>
             )}
 
-            {profile.show_following && (
-              <View
-                style={styles.stat}
+            {(isOwner ||
+              profile.can_view_following) && (
+              <Pressable
+                style={
+                  styles.stat
+                }
+                onPress={() =>
+                  openConnections(
+                    'following'
+                  )
+                }
               >
                 <Text
                   style={
                     styles.statNumber
                   }
                 >
-                  {followingCount}
+                  {
+                    profile.following_count
+                  }
                 </Text>
 
                 <Text
@@ -531,18 +641,22 @@ export default function UserProfileScreen() {
                 >
                   Following
                 </Text>
-              </View>
+              </Pressable>
             )}
 
             <View
-              style={styles.stat}
+              style={
+                styles.stat
+              }
             >
               <Text
                 style={
                   styles.statNumber
                 }
               >
-                {userDrops.length}
+                {
+                  userDrops.length
+                }
               </Text>
 
               <Text
@@ -564,7 +678,8 @@ export default function UserProfileScreen() {
           ACTIVE DROPS
         </Text>
 
-        {userDrops.length === 0 ? (
+        {userDrops.length ===
+        0 ? (
           <Text
             style={
               styles.emptyText
@@ -576,7 +691,9 @@ export default function UserProfileScreen() {
           userDrops.map(
             (drop) => (
               <View
-                key={drop.id}
+                key={
+                  drop.id
+                }
                 style={
                   styles.drop
                 }
@@ -594,7 +711,13 @@ export default function UserProfileScreen() {
                     styles.dropMeta
                   }
                 >
-                  {drop.meta}
+                  {drop.city
+                    ? `${drop.city} · `
+                    : ''}
+
+                  {formatDropTime(
+                    drop.created_at
+                  )}
                 </Text>
               </View>
             )
@@ -617,7 +740,8 @@ const styles =
       flex: 1,
       backgroundColor:
         '#000000',
-      alignItems: 'center',
+      alignItems:
+        'center',
       justifyContent:
         'center',
     },
@@ -670,23 +794,6 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-    },
-
-    avatar: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor:
-        '#222222',
-      alignItems: 'center',
-      justifyContent:
-        'center',
-    },
-
-    avatarText: {
-      color: '#FFFFFF',
-      fontSize: 28,
-      fontWeight: '600',
     },
 
     followButton: {
