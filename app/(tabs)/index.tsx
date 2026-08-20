@@ -41,6 +41,17 @@ type Drop = {
   profiles: DropAuthor | null;
 };
 
+type JoinStatus =
+  | 'none'
+  | 'pending'
+  | 'accepted'
+  | 'declined';
+
+type MyJoinRequest = {
+  drop_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+};
+
 function formatDropTime(createdAt: string) {
   const created = new Date(createdAt);
   const now = new Date();
@@ -80,6 +91,15 @@ export default function HomeScreen() {
     useState<Drop[]>([]);
 
   const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [joinStatuses, setJoinStatuses] =
+    useState<Record<string, JoinStatus>>({});
+
+  const [pendingCounts, setPendingCounts] =
+    useState<Record<string, number>>({});
+
+  const [joinLoadingId, setJoinLoadingId] =
     useState<string | null>(null);
 
   const [loading, setLoading] =
@@ -153,9 +173,85 @@ export default function HomeScreen() {
         return;
       }
 
-      setDrops(
-        (data ?? []) as unknown as Drop[]
-      );
+      const loadedDrops =
+        (data ?? []) as unknown as Drop[];
+
+      setDrops(loadedDrops);
+
+      // Join requests текущего пользователя.
+      const {
+        data: myRequests,
+        error: myRequestsError,
+      } = await supabase
+        .from('join_requests')
+        .select('drop_id, status')
+        .eq('user_id', user.id);
+
+      if (myRequestsError) {
+        console.error(
+          'MY JOIN REQUESTS ERROR:',
+          myRequestsError
+        );
+      } else {
+        const nextStatuses: Record<
+          string,
+          JoinStatus
+        > = {};
+
+        (
+          (myRequests ?? []) as MyJoinRequest[]
+        ).forEach((request) => {
+          nextStatuses[request.drop_id] =
+            request.status;
+        });
+
+        setJoinStatuses(nextStatuses);
+      }
+
+      // Количество pending-заявок
+      // на собственные Drops.
+      const ownDropIds =
+        loadedDrops
+          .filter(
+            (drop) =>
+              drop.author_id === user.id
+          )
+          .map((drop) => drop.id);
+
+      if (ownDropIds.length === 0) {
+        setPendingCounts({});
+      } else {
+        const {
+          data: pendingRequests,
+          error: pendingError,
+        } = await supabase
+          .from('join_requests')
+          .select('drop_id')
+          .in('drop_id', ownDropIds)
+          .eq('status', 'pending');
+
+        if (pendingError) {
+          console.error(
+            'PENDING COUNTS ERROR:',
+            pendingError
+          );
+        } else {
+          const counts: Record<
+            string,
+            number
+          > = {};
+
+          (pendingRequests ?? []).forEach(
+            (request) => {
+              counts[request.drop_id] =
+                (counts[request.drop_id] ?? 0) +
+                1;
+            }
+          );
+
+          setPendingCounts(counts);
+        }
+      }
     } catch (error) {
       console.error(
         'LOAD DROPS ERROR:',
@@ -177,6 +273,114 @@ export default function HomeScreen() {
       loadDrops();
     }, [])
   );
+
+  const handleJoin = async (
+    drop: Drop
+  ) => {
+    if (
+      !currentUserId ||
+      joinLoadingId
+    ) {
+      return;
+    }
+
+    const currentStatus =
+      joinStatuses[drop.id] ?? 'none';
+
+    try {
+      setJoinLoadingId(drop.id);
+
+      if (currentStatus === 'pending') {
+        const { error } = await supabase
+          .from('join_requests')
+          .delete()
+          .eq('drop_id', drop.id)
+          .eq('user_id', currentUserId);
+
+        if (error) {
+          console.error(
+            'CANCEL JOIN ERROR:',
+            error
+          );
+
+          Alert.alert(
+            'Error',
+            'Could not cancel your request.'
+          );
+
+          return;
+        }
+
+        setJoinStatuses((current) => ({
+          ...current,
+          [drop.id]: 'none',
+        }));
+
+        return;
+      }
+
+      if (
+        currentStatus === 'accepted'
+      ) {
+        return;
+      }
+
+      // Если ранее был declined,
+      // удаляем старую строку и позволяем
+      // отправить новую заявку.
+      if (
+        currentStatus === 'declined'
+      ) {
+        const { error: deleteError } =
+          await supabase
+            .from('join_requests')
+            .delete()
+            .eq('drop_id', drop.id)
+            .eq(
+              'user_id',
+              currentUserId
+            );
+
+        if (deleteError) {
+          Alert.alert(
+            'Error',
+            'Could not send a new request.'
+          );
+
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from('join_requests')
+        .insert({
+          drop_id: drop.id,
+          user_id: currentUserId,
+          status: 'pending',
+        });
+
+      if (error) {
+        console.error(
+          'JOIN REQUEST ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Error',
+          'Could not send Join request.'
+        );
+
+        return;
+      }
+
+      setJoinStatuses((current) => ({
+        ...current,
+        [drop.id]: 'pending',
+      }));
+    } finally {
+      setJoinLoadingId(null);
+    }
+  };
 
   const openProfile = (
     drop: Drop
@@ -296,6 +500,13 @@ export default function HomeScreen() {
               drop.city ||
               drop.profiles?.city;
 
+            const joinStatus =
+              joinStatuses[drop.id] ??
+              'none';
+
+            const pendingCount =
+              pendingCounts[drop.id] ?? 0;
+
             return (
               <View
                 key={drop.id}
@@ -372,35 +583,55 @@ export default function HomeScreen() {
                   >
                     {drop.join_enabled && (
                       <TouchableOpacity
-                        style={
-                          styles.joinButton
+                        style={[
+                          styles.joinButton,
+
+                          joinStatus ===
+                            'pending' &&
+                            styles.requestedButton,
+
+                          joinStatus ===
+                            'accepted' &&
+                            styles.acceptedButton,
+                        ]}
+                        disabled={
+                          joinLoadingId ===
+                            drop.id ||
+                          joinStatus ===
+                            'accepted'
                         }
                         onPress={() =>
-                          Alert.alert(
-                            'Join',
-                            'Real Join requests are the next backend step.'
-                          )
+                          handleJoin(drop)
                         }
                       >
                         <Text
-                          style={
-                            styles.joinText
-                          }
+                          style={[
+                            styles.joinText,
+
+                            joinStatus !==
+                              'none' &&
+                              styles.requestedText,
+                          ]}
                         >
-                          Join
+                          {joinLoadingId ===
+                          drop.id
+                            ? '...'
+                            : joinStatus ===
+                                'pending'
+                              ? 'Requested'
+                              : joinStatus ===
+                                  'accepted'
+                                ? 'Joined'
+                                : joinStatus ===
+                                    'declined'
+                                  ? 'Join again'
+                                  : 'Join'}
                         </Text>
                       </TouchableOpacity>
                     )}
 
                     {drop.interested_enabled && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          Alert.alert(
-                            'Interested',
-                            'Interested will be connected to Supabase next.'
-                          )
-                        }
-                      >
+                      <TouchableOpacity>
                         <Text
                           style={
                             styles.secondaryAction
@@ -412,14 +643,7 @@ export default function HomeScreen() {
                     )}
 
                     {drop.reply_enabled && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          Alert.alert(
-                            'Reply',
-                            'Replies will be connected next.'
-                          )
-                        }
-                      >
+                      <TouchableOpacity>
                         <Text
                           style={
                             styles.secondaryAction
@@ -433,13 +657,45 @@ export default function HomeScreen() {
                 )}
 
                 {isOwnDrop && (
-                  <Text
-                    style={
-                      styles.ownDrop
-                    }
-                  >
-                    Your Drop
-                  </Text>
+                  <>
+                    <Text
+                      style={
+                        styles.ownDrop
+                      }
+                    >
+                      Your Drop
+                    </Text>
+
+                    {pendingCount > 0 && (
+                      <TouchableOpacity
+                        style={
+                          styles.requestsButton
+                        }
+                        onPress={() =>
+                          router.push({
+                            pathname:
+                              '/requests',
+                            params: {
+                              dropId:
+                                drop.id,
+                            },
+                          })
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.requestsText
+                          }
+                        >
+                          {pendingCount}{' '}
+                          {pendingCount === 1
+                            ? 'request'
+                            : 'requests'}
+                          {'  →'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </View>
             );
@@ -564,10 +820,30 @@ const styles =
       borderRadius: 20,
     },
 
+    requestedButton: {
+      backgroundColor:
+        '#222222',
+      borderWidth: 1,
+      borderColor:
+        '#555555',
+    },
+
+    acceptedButton: {
+      backgroundColor:
+        '#222222',
+      borderWidth: 1,
+      borderColor:
+        '#444444',
+    },
+
     joinText: {
       color: '#000000',
       fontSize: 14,
       fontWeight: '600',
+    },
+
+    requestedText: {
+      color: '#FFFFFF',
     },
 
     secondaryAction: {
@@ -579,6 +855,17 @@ const styles =
       color: '#555555',
       fontSize: 12,
       marginTop: 14,
+    },
+
+    requestsButton: {
+      marginTop: 12,
+      alignSelf: 'flex-start',
+    },
+
+    requestsText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '600',
     },
 
     emptyContainer: {
