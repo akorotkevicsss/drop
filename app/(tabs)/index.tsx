@@ -148,6 +148,14 @@ export default function HomeScreen() {
     );
 
   const [
+    replyLoadingId,
+    setReplyLoadingId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
     loading,
     setLoading,
   ] =
@@ -241,10 +249,6 @@ export default function HomeScreen() {
         loadedDrops
       );
 
-      /*
-       * LIKE STATE
-       */
-
       const {
         data: allLikes,
         error:
@@ -307,10 +311,6 @@ export default function HomeScreen() {
         );
       }
 
-      /*
-       * JOIN STATE
-       */
-
       const {
         data:
           myRequests,
@@ -358,10 +358,6 @@ export default function HomeScreen() {
           nextStatuses
         );
       }
-
-      /*
-       * REQUEST COUNTS
-       */
 
       const ownDropIds =
         loadedDrops
@@ -793,6 +789,184 @@ export default function HomeScreen() {
       }
     };
 
+  const handleReply =
+    async (
+      drop: Drop
+    ) => {
+      if (
+        !currentUserId ||
+        replyLoadingId
+      ) {
+        return;
+      }
+
+      if (
+        drop.author_id ===
+        currentUserId
+      ) {
+        return;
+      }
+
+      try {
+        setReplyLoadingId(
+          drop.id
+        );
+
+        /*
+         * Сначала ищем существующий conversation
+         * для этого Drop и этой пары.
+         */
+
+        const {
+          data:
+            existingConversation,
+          error:
+            existingError,
+        } =
+          await supabase
+            .from(
+              'conversations'
+            )
+            .select('id')
+            .eq(
+              'drop_id',
+              drop.id
+            )
+            .eq(
+              'author_id',
+              drop.author_id
+            )
+            .eq(
+              'participant_id',
+              currentUserId
+            )
+            .maybeSingle();
+
+        if (
+          existingError
+        ) {
+          console.error(
+            'FIND REPLY CONVERSATION ERROR:',
+            existingError
+          );
+
+          Alert.alert(
+            'Error',
+            'Could not open this conversation.'
+          );
+
+          return;
+        }
+
+        if (
+          existingConversation
+        ) {
+          router.push(
+            `/chat/${existingConversation.id}`
+          );
+
+          return;
+        }
+
+        /*
+         * Conversation ещё нет —
+         * создаём независимый Reply-chat.
+         */
+
+        const {
+          data:
+            newConversation,
+          error:
+            createError,
+        } =
+          await supabase
+            .from(
+              'conversations'
+            )
+            .insert({
+              drop_id:
+                drop.id,
+
+              join_request_id:
+                null,
+
+              author_id:
+                drop.author_id,
+
+              participant_id:
+                currentUserId,
+
+              source:
+                'reply',
+            })
+            .select('id')
+            .single();
+
+        if (
+          createError
+        ) {
+          console.error(
+            'CREATE REPLY CONVERSATION ERROR:',
+            createError
+          );
+
+          /*
+           * На случай, если между SELECT и INSERT
+           * conversation уже успел появиться,
+           * ещё раз пытаемся его найти.
+           */
+
+          const {
+            data:
+              fallbackConversation,
+          } =
+            await supabase
+              .from(
+                'conversations'
+              )
+              .select('id')
+              .eq(
+                'drop_id',
+                drop.id
+              )
+              .eq(
+                'author_id',
+                drop.author_id
+              )
+              .eq(
+                'participant_id',
+                currentUserId
+              )
+              .maybeSingle();
+
+          if (
+            fallbackConversation
+          ) {
+            router.push(
+              `/chat/${fallbackConversation.id}`
+            );
+
+            return;
+          }
+
+          Alert.alert(
+            'Error',
+            'Could not start a Reply conversation.'
+          );
+
+          return;
+        }
+
+        router.push(
+          `/chat/${newConversation.id}`
+        );
+      } finally {
+        setReplyLoadingId(
+          null
+        );
+      }
+    };
+
   const openProfile = (
     drop: Drop
   ) => {
@@ -1128,13 +1302,26 @@ export default function HomeScreen() {
                       )}
 
                       {drop.reply_enabled && (
-                        <TouchableOpacity>
+                        <TouchableOpacity
+                          disabled={
+                            replyLoadingId ===
+                            drop.id
+                          }
+                          onPress={() =>
+                            handleReply(
+                              drop
+                            )
+                          }
+                        >
                           <Text
                             style={
                               styles.secondaryAction
                             }
                           >
-                            Reply
+                            {replyLoadingId ===
+                            drop.id
+                              ? '...'
+                              : 'Reply'}
                           </Text>
                         </TouchableOpacity>
                       )}
