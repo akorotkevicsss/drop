@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
 
 type Profile = {
@@ -304,11 +305,6 @@ export default function ProfileScreen() {
     profile.display_name ||
     'Unnamed user';
 
-  const avatarLetter =
-    displayName
-      .charAt(0)
-      .toUpperCase();
-
   return (
     <View style={styles.container}>
       <ScrollView>
@@ -319,13 +315,11 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.profile}>
-          <View style={styles.avatar}>
-            <Text
-              style={styles.avatarText}
-            >
-              {avatarLetter}
-            </Text>
-          </View>
+          <UserAvatar
+            uri={profile.avatar_url}
+            name={displayName}
+            size={82}
+          />
 
           <Text style={styles.name}>
             {displayName}

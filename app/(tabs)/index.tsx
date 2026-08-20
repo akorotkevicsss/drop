@@ -20,12 +20,14 @@ import {
   View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
 
 type DropAuthor = {
   username: string | null;
   display_name: string | null;
   city: string | null;
+  avatar_url: string | null;
 };
 
 type Drop = {
@@ -217,7 +219,8 @@ export default function HomeScreen() {
           profiles!drops_author_id_fkey (
             username,
             display_name,
-            city
+            city,
+            avatar_url
           )
         `)
         .order(
@@ -1250,11 +1253,6 @@ export default function HomeScreen() {
                   .profiles
                   ?.username;
 
-              const avatarLetter =
-                displayName
-                  .charAt(0)
-                  .toUpperCase();
-
               const isOwnDrop =
                 drop.author_id ===
                 currentUserId;
@@ -1309,20 +1307,12 @@ export default function HomeScreen() {
                       )
                     }
                   >
-                    <View
-                      style={
-                        styles.avatar
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.avatarText
-                        }
-                      >
-                        {
-                          avatarLetter
-                        }
-                      </Text>
+                    <View style={styles.avatar}>
+                      <UserAvatar
+                        uri={drop.profiles?.avatar_url}
+                        name={displayName}
+                        size={44}
+                      />
                     </View>
 
                     <View>

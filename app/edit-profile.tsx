@@ -1,19 +1,21 @@
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
 
 type Profile = {
@@ -24,6 +26,7 @@ type Profile = {
   city: string;
   username_changed_at: string | null;
   profile_changed_at: string | null;
+  avatar_url: string | null;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -83,6 +86,9 @@ export default function EditProfileScreen() {
   const [saving, setSaving] =
     useState(false);
 
+  const [avatarBusy, setAvatarBusy] =
+    useState(false);
+
   const [now, setNow] =
     useState(Date.now());
 
@@ -127,7 +133,8 @@ export default function EditProfileScreen() {
           bio,
           city,
           username_changed_at,
-          profile_changed_at
+          profile_changed_at,
+          avatar_url
         `)
         .eq('id', user.id)
         .single();
@@ -166,6 +173,264 @@ export default function EditProfileScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const getAvatarStoragePath = (
+    avatarUrl: string | null
+  ) => {
+    if (!avatarUrl) {
+      return null;
+    }
+
+    const marker =
+      '/storage/v1/object/public/avatars/';
+
+    const markerIndex =
+      avatarUrl.indexOf(marker);
+
+    if (markerIndex === -1) {
+      return null;
+    }
+
+    return decodeURIComponent(
+      avatarUrl.slice(
+        markerIndex + marker.length
+      )
+    );
+  };
+
+  const handlePickAvatar = async () => {
+    if (!profile || avatarBusy) {
+      return;
+    }
+
+    try {
+      setAvatarBusy(true);
+
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Photo access needed',
+          'Allow photo library access to choose a profile picture.'
+        );
+
+        return;
+      }
+
+      const result =
+        await ImagePicker.launchImageLibraryAsync({
+          mediaTypes:
+            ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets[0];
+
+      const response = await fetch(
+        asset.uri
+      );
+
+      const arrayBuffer =
+        await response.arrayBuffer();
+
+      const contentType =
+        asset.mimeType || 'image/jpeg';
+
+      const extension =
+        contentType === 'image/png'
+          ? 'png'
+          : contentType === 'image/webp'
+            ? 'webp'
+            : 'jpg';
+
+      const storagePath =
+        `${profile.id}/avatar-${Date.now()}.${extension}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from('avatars')
+          .upload(
+            storagePath,
+            arrayBuffer,
+            {
+              contentType,
+              upsert: false,
+            }
+          );
+
+      if (uploadError) {
+        console.error(
+          'AVATAR UPLOAD ERROR:',
+          uploadError
+        );
+
+        Alert.alert(
+          'Upload failed',
+          uploadError.message
+        );
+
+        return;
+      }
+
+      const { data: publicUrlData } =
+        supabase.storage
+          .from('avatars')
+          .getPublicUrl(storagePath);
+
+      const newAvatarUrl =
+        publicUrlData.publicUrl;
+
+      const { error: profileError } =
+        await supabase
+          .from('profiles')
+          .update({
+            avatar_url: newAvatarUrl,
+          })
+          .eq('id', profile.id);
+
+      if (profileError) {
+        await supabase.storage
+          .from('avatars')
+          .remove([storagePath]);
+
+        console.error(
+          'AVATAR PROFILE UPDATE ERROR:',
+          profileError
+        );
+
+        Alert.alert(
+          'Could not save avatar',
+          profileError.message
+        );
+
+        return;
+      }
+
+      const oldStoragePath =
+        getAvatarStoragePath(
+          profile.avatar_url
+        );
+
+      if (oldStoragePath) {
+        const { error: deleteOldError } =
+          await supabase.storage
+            .from('avatars')
+            .remove([oldStoragePath]);
+
+        if (deleteOldError) {
+          console.warn(
+            'OLD AVATAR DELETE ERROR:',
+            deleteOldError
+          );
+        }
+      }
+
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              avatar_url: newAvatarUrl,
+            }
+          : current
+      );
+    } catch (error) {
+      console.error(
+        'AVATAR PICK ERROR:',
+        error
+      );
+
+      Alert.alert(
+        'Avatar error',
+        'Something went wrong while updating your profile picture.'
+      );
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    if (
+      !profile?.avatar_url ||
+      avatarBusy
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      'Remove profile picture',
+      'Remove your current profile picture?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setAvatarBusy(true);
+
+              const oldStoragePath =
+                getAvatarStoragePath(
+                  profile.avatar_url
+                );
+
+              const { error: updateError } =
+                await supabase
+                  .from('profiles')
+                  .update({
+                    avatar_url: null,
+                  })
+                  .eq('id', profile.id);
+
+              if (updateError) {
+                Alert.alert(
+                  'Could not remove avatar',
+                  updateError.message
+                );
+
+                return;
+              }
+
+              if (oldStoragePath) {
+                const { error: removeError } =
+                  await supabase.storage
+                    .from('avatars')
+                    .remove([oldStoragePath]);
+
+                if (removeError) {
+                  console.warn(
+                    'AVATAR STORAGE REMOVE ERROR:',
+                    removeError
+                  );
+                }
+              }
+
+              setProfile((current) =>
+                current
+                  ? {
+                      ...current,
+                      avatar_url: null,
+                    }
+                  : current
+              );
+            } finally {
+              setAvatarBusy(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const usernameRemainingMs =
@@ -419,6 +684,43 @@ export default function EditProfileScreen() {
           />
         </View>
 
+
+        <View style={styles.avatarSection}>
+          <UserAvatar
+            uri={profile?.avatar_url}
+            name={displayName || profile?.display_name}
+            size={96}
+          />
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.avatarAction,
+              pressed && styles.avatarActionPressed,
+            ]}
+            onPress={handlePickAvatar}
+            disabled={avatarBusy}
+          >
+            <Text style={styles.avatarActionText}>
+              {avatarBusy
+                ? 'Working...'
+                : profile?.avatar_url
+                  ? 'Change photo'
+                  : 'Add photo'}
+            </Text>
+          </Pressable>
+
+          {!!profile?.avatar_url && (
+            <Pressable
+              onPress={handleRemoveAvatar}
+              disabled={avatarBusy}
+            >
+              <Text style={styles.removeAvatarText}>
+                Remove photo
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
         <Text style={styles.label}>
           USERNAME
         </Text>
@@ -569,6 +871,38 @@ const styles = StyleSheet.create({
 
   headerSpacer: {
     width: 24,
+  },
+
+
+
+  avatarSection: {
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 4,
+  },
+
+  avatarAction: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: '#1A1A1A',
+  },
+
+  avatarActionPressed: {
+    opacity: 0.65,
+  },
+
+  avatarActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  removeAvatarText: {
+    color: '#FF5A5F',
+    fontSize: 13,
+    marginTop: 12,
   },
 
   label: {

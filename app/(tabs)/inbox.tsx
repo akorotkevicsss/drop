@@ -18,11 +18,13 @@ import {
   View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import { supabase } from '@/lib/supabase';
 
 type Profile = {
   username: string | null;
   display_name: string | null;
+  avatar_url: string | null;
 };
 
 type LastMessage = {
@@ -187,6 +189,8 @@ export default function InboxScreen() {
             string | null;
           display_name:
             string | null;
+          avatar_url:
+            string | null;
         }[] = [];
 
         if (
@@ -205,7 +209,8 @@ export default function InboxScreen() {
               .select(`
                 id,
                 username,
-                display_name
+                display_name,
+                avatar_url
               `)
               .in(
                 'id',
@@ -385,6 +390,9 @@ export default function InboxScreen() {
 
                           display_name:
                             profile.display_name,
+
+                          avatar_url:
+                            profile.avatar_url,
                         }
                       : null,
 
@@ -574,20 +582,12 @@ export default function InboxScreen() {
                     )
                   }
                 >
-                  <View
-                    style={
-                      styles.avatar
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.avatarText
-                      }
-                    >
-                      {name
-                        .charAt(0)
-                        .toUpperCase()}
-                    </Text>
+                  <View style={styles.avatar}>
+                    <UserAvatar
+                      uri={conversation.otherUser?.avatar_url}
+                      name={name}
+                      size={48}
+                    />
                   </View>
 
                   <View
