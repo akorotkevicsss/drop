@@ -39,10 +39,71 @@ export default function TabLayout() {
     useState(0);
 
   const [
+    activityUnreadCount,
+    setActivityUnreadCount,
+  ] =
+    useState(0);
+
+  const [
     currentUserId,
     setCurrentUserId,
   ] =
     useState<string | null>(null);
+
+  const loadActivityUnreadCount =
+    useCallback(
+      async (
+        suppliedUserId?: string
+      ) => {
+        const userId =
+          suppliedUserId ??
+          currentUserId;
+
+        if (!userId) {
+          setActivityUnreadCount(
+            0
+          );
+          return;
+        }
+
+        const {
+          count,
+          error,
+        } =
+          await supabase
+            .from(
+              'notifications'
+            )
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'user_id',
+              userId
+            )
+            .is(
+              'read_at',
+              null
+            );
+
+        if (error) {
+          console.error(
+            'ACTIVITY BADGE ERROR:',
+            error
+          );
+
+          return;
+        }
+
+        setActivityUnreadCount(
+          count ?? 0
+        );
+      },
+      [
+        currentUserId,
+      ]
+    );
 
   const loadUnreadCount =
     useCallback(
@@ -301,9 +362,15 @@ export default function TabLayout() {
           user.id
         );
 
-        await loadUnreadCount(
-          user.id
-        );
+        await Promise.all([
+          loadUnreadCount(
+            user.id
+          ),
+
+          loadActivityUnreadCount(
+            user.id
+          ),
+        ]);
       };
 
     initialize();
@@ -333,8 +400,16 @@ export default function TabLayout() {
             loadUnreadCount(
               userId
             );
+
+            loadActivityUnreadCount(
+              userId
+            );
           } else {
             setUnreadCount(
+              0
+            );
+
+            setActivityUnreadCount(
               0
             );
           }
@@ -413,6 +488,20 @@ export default function TabLayout() {
             loadUnreadCount();
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table:
+              'notifications',
+            filter:
+              `user_id=eq.${currentUserId}`,
+          },
+          () => {
+            loadActivityUnreadCount();
+          }
+        )
         .subscribe();
 
     return () => {
@@ -423,6 +512,7 @@ export default function TabLayout() {
   }, [
     currentUserId,
     loadUnreadCount,
+    loadActivityUnreadCount,
   ]);
 
   return (
@@ -467,6 +557,46 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="explore"
+        options={{
+          title:
+            'Explore',
+
+          tabBarIcon: ({
+            color,
+          }) => (
+            <IconSymbol
+              size={28}
+              name="sparkles"
+              color={
+                color
+              }
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="find"
+        options={{
+          title:
+            'Find',
+
+          tabBarIcon: ({
+            color,
+          }) => (
+            <IconSymbol
+              size={28}
+              name="magnifyingglass"
+              color={
+                color
+              }
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="index"
         options={{
           title:
@@ -478,26 +608,6 @@ export default function TabLayout() {
             <IconSymbol
               size={28}
               name="house.fill"
-              color={
-                color
-              }
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title:
-            'Explore',
-
-          tabBarIcon: ({
-            color,
-          }) => (
-            <IconSymbol
-              size={28}
-              name="magnifyingglass"
               color={
                 color
               }
@@ -527,6 +637,35 @@ export default function TabLayout() {
             <IconSymbol
               size={28}
               name="message.fill"
+              color={
+                color
+              }
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="activity"
+        options={{
+          title:
+            'Activity',
+
+          tabBarBadge:
+            activityUnreadCount >
+            0
+              ? activityUnreadCount >
+                9
+                ? '9+'
+                : activityUnreadCount
+              : undefined,
+
+          tabBarIcon: ({
+            color,
+          }) => (
+            <IconSymbol
+              size={28}
+              name="bell.fill"
               color={
                 color
               }

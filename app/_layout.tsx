@@ -1,11 +1,30 @@
-import type { Session } from '@supabase/supabase-js';
-import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import type {
+  Session,
+} from '@supabase/supabase-js';
 
-import { supabase } from '@/lib/supabase';
+import {
+  Stack,
+} from 'expo-router';
+
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  AppGateContext,
+} from '@/contexts/app-gate-context';
+
+import {
+  supabase,
+} from '@/lib/supabase';
 
 export default function RootLayout() {
-  const [session, setSession] =
+  const [
+    session,
+    setSession,
+  ] =
     useState<Session | null>(
       null
     );
@@ -19,63 +38,133 @@ export default function RootLayout() {
     >(null);
 
   const [
+    onboardingCompleted,
+    setOnboardingCompleted,
+  ] =
+    useState<
+      boolean | null
+    >(null);
+
+  const [
     loading,
     setLoading,
   ] =
     useState(true);
 
   const checkProfile =
-    async (
-      currentSession:
-        Session | null
-    ) => {
-      if (!currentSession) {
-        setHasProfile(null);
-        setLoading(false);
-        return;
-      }
+    useCallback(
+      async (
+        currentSession:
+          Session | null
+      ) => {
+        if (!currentSession) {
+          setHasProfile(
+            null
+          );
 
-      const {
-        data,
-        error,
-      } =
-        await supabase
-          .from('profiles')
-          .select('id')
-          .eq(
-            'id',
-            currentSession.user.id
-          )
-          .maybeSingle();
+          setOnboardingCompleted(
+            null
+          );
 
-      if (error) {
-        console.error(
-          'PROFILE CHECK ERROR:',
-          error
+          setLoading(
+            false
+          );
+
+          return;
+        }
+
+        const {
+          data,
+          error,
+        } =
+          await supabase
+            .from(
+              'profiles'
+            )
+            .select(`
+              id,
+              onboarding_completed
+            `)
+            .eq(
+              'id',
+              currentSession
+                .user.id
+            )
+            .maybeSingle();
+
+        if (error) {
+          console.error(
+            'PROFILE CHECK ERROR:',
+            error
+          );
+
+          setHasProfile(
+            false
+          );
+
+          setOnboardingCompleted(
+            null
+          );
+
+          setLoading(
+            false
+          );
+
+          return;
+        }
+
+        setHasProfile(
+          !!data
         );
 
-        setHasProfile(false);
-        setLoading(false);
-        return;
-      }
+        setOnboardingCompleted(
+          data
+            ? data
+                .onboarding_completed ===
+              true
+            : null
+        );
 
-      setHasProfile(
-        !!data
-      );
+        setLoading(
+          false
+        );
+      },
+      []
+    );
 
-      setLoading(false);
-    };
+  const refreshProfileGate =
+    useCallback(
+      async () => {
+        setLoading(
+          true
+        );
+
+        const {
+          data,
+        } =
+          await supabase.auth.getSession();
+
+        await checkProfile(
+          data.session
+        );
+      },
+      [
+        checkProfile,
+      ]
+    );
 
   useEffect(() => {
     supabase.auth
       .getSession()
       .then(
-        ({ data }) => {
+        async ({
+          data,
+        }) => {
           setSession(
             data.session
           );
 
-          checkProfile(
+          await checkProfile(
             data.session
           );
         }
@@ -95,7 +184,9 @@ export default function RootLayout() {
             newSession
           );
 
-          setLoading(true);
+          setLoading(
+            true
+          );
 
           checkProfile(
             newSession
@@ -106,71 +197,100 @@ export default function RootLayout() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [
+    checkProfile,
+  ]);
 
   if (loading) {
     return null;
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
+    <AppGateContext.Provider
+      value={{
+        refreshProfileGate,
       }}
     >
-      <Stack.Protected
-        guard={!session}
+      <Stack
+        screenOptions={{
+          headerShown:
+            false,
+        }}
       >
-        <Stack.Screen
-          name="auth"
-        />
-      </Stack.Protected>
+        <Stack.Protected
+          guard={
+            !session
+          }
+        >
+          <Stack.Screen
+            name="auth"
+          />
+        </Stack.Protected>
 
-      <Stack.Protected
-        guard={
-          !!session &&
-          hasProfile === false
-        }
-      >
-        <Stack.Screen
-          name="create-profile"
-        />
-      </Stack.Protected>
+        <Stack.Protected
+          guard={
+            !!session &&
+            hasProfile ===
+              false
+          }
+        >
+          <Stack.Screen
+            name="create-profile"
+          />
+        </Stack.Protected>
 
-      <Stack.Protected
-        guard={
-          !!session &&
-          hasProfile === true
-        }
-      >
-        <Stack.Screen
-          name="(tabs)"
-        />
+        <Stack.Protected
+          guard={
+            !!session &&
+            hasProfile ===
+              true &&
+            onboardingCompleted ===
+              false
+          }
+        >
+          <Stack.Screen
+            name="onboarding"
+          />
+        </Stack.Protected>
 
-        <Stack.Screen
-          name="edit-profile"
-        />
+        <Stack.Protected
+          guard={
+            !!session &&
+            hasProfile ===
+              true &&
+            onboardingCompleted ===
+              true
+          }
+        >
+          <Stack.Screen
+            name="(tabs)"
+          />
 
-        <Stack.Screen
-          name="settings"
-        />
+          <Stack.Screen
+            name="edit-profile"
+          />
 
-        <Stack.Screen
-          name="connections/[type]"
-        />
+          <Stack.Screen
+            name="settings"
+          />
 
-        <Stack.Screen
-          name="chat/[id]"
-        />
+          <Stack.Screen
+            name="connections/[type]"
+          />
 
-        <Stack.Screen
-          name="user/[username]"
-        />
+          <Stack.Screen
+            name="chat/[id]"
+          />
 
-        <Stack.Screen
-          name="requests"
-        />
-      </Stack.Protected>
-    </Stack>
+          <Stack.Screen
+            name="user/[username]"
+          />
+
+          <Stack.Screen
+            name="requests"
+          />
+        </Stack.Protected>
+      </Stack>
+    </AppGateContext.Provider>
   );
 }

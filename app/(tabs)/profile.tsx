@@ -572,13 +572,38 @@ export default function ProfileScreen() {
 
         {myDrops.length ===
         0 ? (
-          <Text
+          <View
             style={
-              styles.emptyText
+              styles.emptyDropState
             }
           >
-            You haven't dropped anything yet.
-          </Text>
+            <Text
+              style={
+                styles.emptyText
+              }
+            >
+              You haven't dropped anything yet.
+            </Text>
+
+            <Pressable
+              style={
+                styles.firstDropButton
+              }
+              onPress={() =>
+                router.push(
+                  '/create'
+                )
+              }
+            >
+              <Text
+                style={
+                  styles.firstDropText
+                }
+              >
+                Create your first Drop
+              </Text>
+            </Pressable>
+          </View>
         ) : (
           myDrops.map(
             (drop) => (
@@ -792,9 +817,30 @@ const styles =
       marginTop: 8,
     },
 
+    emptyDropState: {
+      paddingHorizontal: 20,
+      paddingBottom: 20,
+    },
+
+    firstDropButton: {
+      marginTop: 4,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+    },
+
+    firstDropText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '600',
+    },
+
     emptyText: {
       color: '#555555',
       fontSize: 14,
-      padding: 20,
+      paddingVertical: 12,
     },
   });

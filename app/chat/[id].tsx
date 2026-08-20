@@ -207,6 +207,13 @@ export default function ChatScreen() {
                 conversation.id,
                 currentUserId
               );
+
+              setTimeout(() => {
+                markConversationNotificationsRead(
+                  conversation.id,
+                  currentUserId
+                );
+              }, 100);
             }
 
             scrollToBottom();
@@ -452,6 +459,43 @@ export default function ChatScreen() {
       }
     };
 
+  const markConversationNotificationsRead =
+    async (
+      conversationId: string,
+      userId: string
+    ) => {
+      const {
+        error,
+      } =
+        await supabase
+          .from(
+            'notifications'
+          )
+          .update({
+            read_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            'user_id',
+            userId
+          )
+          .eq(
+            'conversation_id',
+            conversationId
+          )
+          .is(
+            'read_at',
+            null
+          );
+
+      if (error) {
+        console.error(
+          'MARK CHAT NOTIFICATIONS READ ERROR:',
+          error
+        );
+      }
+    };
+
   const loadOtherUserReadState =
     async (
       conversationId: string,
@@ -644,10 +688,17 @@ export default function ChatScreen() {
           ),
         ]);
 
-        await markConversationRead(
-          conversationData.id,
-          user.id
-        );
+        await Promise.all([
+          markConversationRead(
+            conversationData.id,
+            user.id
+          ),
+
+          markConversationNotificationsRead(
+            conversationData.id,
+            user.id
+          ),
+        ]);
       } catch (
         error
       ) {

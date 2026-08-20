@@ -250,6 +250,51 @@ export default function HomeScreen() {
       );
 
       /*
+       * FOLLOWING FEED
+       *
+       * Home contains:
+       * - your own Drops
+       * - Drops from people you follow
+       */
+      const {
+        data: followingData,
+        error: followingError,
+      } =
+        await supabase
+          .from('follows')
+          .select(
+            'following_id'
+          )
+          .eq(
+            'follower_id',
+            user.id
+          );
+
+      if (followingError) {
+        console.error(
+          'LOAD FOLLOWING ERROR:',
+          followingError
+        );
+
+        Alert.alert(
+          'Error',
+          'Could not load your Following feed.'
+        );
+
+        return;
+      }
+
+      const feedAuthorIds = [
+        user.id,
+        ...(
+          followingData ?? []
+        ).map(
+          (follow) =>
+            follow.following_id
+        ),
+      ];
+
+      /*
        * LOAD DROPS
        */
 
@@ -278,6 +323,10 @@ export default function HomeScreen() {
           )
         `)
         .is('deleted_at', null)
+        .in(
+          'author_id',
+          feedAuthorIds
+        )
         .order(
           'created_at',
           {
@@ -1291,11 +1340,21 @@ export default function HomeScreen() {
           styles.header
         }
       >
-        <Text
-          style={styles.logo}
-        >
-          DROP
-        </Text>
+        <View>
+          <Text
+            style={styles.logo}
+          >
+            DROP
+          </Text>
+
+          <Text
+            style={
+              styles.feedLabel
+            }
+          >
+            FOLLOWING
+          </Text>
+        </View>
 
         <TouchableOpacity
           onPress={() =>
@@ -1341,7 +1400,7 @@ export default function HomeScreen() {
                 styles.emptyTitle
               }
             >
-              Nothing dropped yet.
+              Your Following feed is quiet.
             </Text>
 
             <Text
@@ -1349,8 +1408,52 @@ export default function HomeScreen() {
                 styles.emptySubtitle
               }
             >
-              Be the first.
+              Follow people to bring their Drops here, or post your own.
             </Text>
+
+            <View
+              style={
+                styles.emptyActions
+              }
+            >
+              <Pressable
+                style={
+                  styles.emptyPrimaryButton
+                }
+                onPress={() =>
+                  router.push(
+                    '/explore'
+                  )
+                }
+              >
+                <Text
+                  style={
+                    styles.emptyPrimaryText
+                  }
+                >
+                  Explore Drops
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={
+                  styles.emptySecondaryButton
+                }
+                onPress={() =>
+                  router.push(
+                    '/create'
+                  )
+                }
+              >
+                <Text
+                  style={
+                    styles.emptySecondaryText
+                  }
+                >
+                  Create a Drop
+                </Text>
+              </Pressable>
+            </View>
           </View>
         ) : (
           drops.map(
@@ -1754,6 +1857,14 @@ const styles =
       letterSpacing: 3,
     },
 
+    feedLabel: {
+      color: '#555555',
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 1.4,
+      marginTop: 3,
+    },
+
     headerButton: {
       color: '#FFFFFF',
       fontSize: 28,
@@ -1927,6 +2038,42 @@ const styles =
       paddingTop: 60,
       alignItems:
         'center',
+    },
+
+    emptyActions: {
+      width: '100%',
+      maxWidth: 280,
+      marginTop: 22,
+      gap: 10,
+    },
+
+    emptyPrimaryButton: {
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    emptyPrimaryText: {
+      color: '#000000',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+
+    emptySecondaryButton: {
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    emptySecondaryText: {
+      color: '#AAAAAA',
+      fontSize: 14,
+      fontWeight: '600',
     },
 
     emptyTitle: {
