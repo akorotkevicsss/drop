@@ -295,19 +295,38 @@ export default function RequestsScreen() {
         */
 
         const findConversation = async () => {
+          /*
+           * Unified DM не имеет постоянного направления.
+           *
+           * Если первый контакт когда-то создал чат как:
+           *   A -> B
+           *
+           * следующий Join может прийти в контексте:
+           *   B -> A
+           *
+           * Поэтому ищем conversation в ОБЕ стороны.
+           */
+          const authorId =
+            drop!.author_id;
+
+          const participantId =
+            request.user_id;
+
           const {
             data: conversation,
             error: conversationError,
           } = await supabase
             .from('conversations')
             .select('id')
-            .eq('author_id', drop!.author_id)
-            .eq('participant_id', request.user_id)
+            .or(
+              `and(author_id.eq.${authorId},participant_id.eq.${participantId}),and(author_id.eq.${participantId},participant_id.eq.${authorId})`
+            )
+            .limit(1)
             .maybeSingle();
 
           if (conversationError) {
             console.error(
-              'FIND CONVERSATION AFTER ACCEPT ERROR:',
+              'FIND UNIFIED CONVERSATION AFTER ACCEPT ERROR:',
               conversationError
             );
 

@@ -241,6 +241,10 @@ export default function ProfileScreen() {
               'author_id',
               user.id
             )
+            .is(
+              'deleted_at',
+              null
+            )
             .order(
               'created_at',
               {

@@ -39,6 +39,8 @@ type Drop = {
   join_enabled: boolean;
   interested_enabled: boolean;
   reply_enabled: boolean;
+  join_until: string | null;
+  deleted_at: string | null;
   created_at: string;
   profiles: DropAuthor | null;
 };
@@ -95,6 +97,51 @@ function formatDropTime(createdAt: string) {
   );
 
   return `${days}d`;
+}
+
+function isJoinOpen(drop: Drop) {
+  if (!drop.join_enabled) {
+    return false;
+  }
+
+  if (!drop.join_until) {
+    return true;
+  }
+
+  return (
+    new Date(drop.join_until).getTime() >
+    Date.now()
+  );
+}
+
+function formatJoinTimer(
+  joinUntil: string | null
+) {
+  if (!joinUntil) {
+    return null;
+  }
+
+  const difference =
+    new Date(joinUntil).getTime() -
+    Date.now();
+
+  if (difference <= 0) {
+    return 'Join closed';
+  }
+
+  const minutes = Math.ceil(
+    difference / (1000 * 60)
+  );
+
+  if (minutes < 60) {
+    return `Join · ${minutes}m left`;
+  }
+
+  const hours = Math.ceil(
+    minutes / 60
+  );
+
+  return `Join · ${hours}h left`;
 }
 
 export default function HomeScreen() {
@@ -165,6 +212,11 @@ export default function HomeScreen() {
     setRefreshing,
   ] = useState(false);
 
+  const [
+    deleteLoadingId,
+    setDeleteLoadingId,
+  ] = useState<string | null>(null);
+
   const loadDrops = async (
     manualRefresh = false
   ) => {
@@ -215,6 +267,8 @@ export default function HomeScreen() {
           join_enabled,
           interested_enabled,
           reply_enabled,
+          join_until,
+          deleted_at,
           created_at,
           profiles!drops_author_id_fkey (
             username,
@@ -223,6 +277,7 @@ export default function HomeScreen() {
             avatar_url
           )
         `)
+        .is('deleted_at', null)
         .order(
           'created_at',
           {
@@ -1124,6 +1179,64 @@ export default function HomeScreen() {
       }
     };
 
+  const handleDeleteDrop = (drop: Drop) => {
+    if (
+      drop.author_id !== currentUserId ||
+      deleteLoadingId
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete Drop?',
+      'The Drop will disappear from profiles and feeds. Existing chats will stay available.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleteLoadingId(drop.id);
+
+              const { error } =
+                await supabase.rpc(
+                  'delete_own_drop',
+                  {
+                    target_drop_id: drop.id,
+                  }
+                );
+
+              if (error) {
+                console.error(
+                  'DELETE DROP ERROR:',
+                  error
+                );
+
+                Alert.alert(
+                  'Error',
+                  'Could not delete this Drop.'
+                );
+                return;
+              }
+
+              setDrops((current) =>
+                current.filter(
+                  (item) => item.id !== drop.id
+                )
+              );
+            } finally {
+              setDeleteLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   /*
    * PROFILE
    */
@@ -1288,6 +1401,14 @@ export default function HomeScreen() {
                   drop.id
                 ] ?? 0;
 
+              const joinOpen =
+                isJoinOpen(drop);
+
+              const joinTimerLabel =
+                formatJoinTimer(
+                  drop.join_until
+                );
+
               return (
                 <View
                   key={
@@ -1364,13 +1485,25 @@ export default function HomeScreen() {
                     </Text>
                   )}
 
+                  {!!joinTimerLabel && (
+                    <Text
+                      style={[
+                        styles.joinTimerMeta,
+                        !joinOpen &&
+                          styles.joinTimerClosed,
+                      ]}
+                    >
+                      {joinTimerLabel}
+                    </Text>
+                  )}
+
                   {!isOwnDrop && (
                     <View
                       style={
                         styles.actions
                       }
                     >
-                      {drop.join_enabled && (
+                      {joinOpen && (
                         <TouchableOpacity
                           style={[
                             styles.joinButton,
@@ -1503,6 +1636,31 @@ export default function HomeScreen() {
                             likeCount
                           }
                         </Text>
+
+                        <Pressable
+                          onPress={() =>
+                            handleDeleteDrop(drop)
+                          }
+                          disabled={
+                            deleteLoadingId ===
+                            drop.id
+                          }
+                          hitSlop={10}
+                          style={
+                            styles.deleteDropButton
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.deleteDropText
+                            }
+                          >
+                            {deleteLoadingId ===
+                            drop.id
+                              ? '...'
+                              : 'Delete'}
+                          </Text>
+                        </Pressable>
                       </View>
 
                       {pendingCount >
@@ -1661,6 +1819,16 @@ const styles =
       marginTop: 10,
     },
 
+    joinTimerMeta: {
+      color: '#666666',
+      fontSize: 12,
+      marginTop: 7,
+    },
+
+    joinTimerClosed: {
+      color: '#444444',
+    },
+
     actions: {
       flexDirection:
         'row',
@@ -1729,6 +1897,15 @@ const styles =
     },
 
     ownLikeCount: {
+      color: '#777777',
+      fontSize: 12,
+    },
+
+    deleteDropButton: {
+      marginLeft: 'auto',
+    },
+
+    deleteDropText: {
       color: '#777777',
       fontSize: 12,
     },

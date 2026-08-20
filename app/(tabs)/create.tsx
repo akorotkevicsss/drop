@@ -25,6 +25,41 @@ import {
 
 import { supabase } from '@/lib/supabase';
 
+type JoinTimer =
+  | 'none'
+  | '1h'
+  | '3h'
+  | '6h'
+  | '12h'
+  | '24h';
+
+const JOIN_TIMER_OPTIONS: {
+  value: JoinTimer;
+  label: string;
+}[] = [
+  { value: 'none', label: 'No limit' },
+  { value: '1h', label: '1h' },
+  { value: '3h', label: '3h' },
+  { value: '6h', label: '6h' },
+  { value: '12h', label: '12h' },
+  { value: '24h', label: '24h' },
+];
+
+function getJoinUntil(timer: JoinTimer) {
+  if (timer === 'none') {
+    return null;
+  }
+
+  const hours = Number(
+    timer.replace('h', '')
+  );
+
+  return new Date(
+    Date.now() +
+      hours * 60 * 60 * 1000
+  ).toISOString();
+}
+
 export default function CreateScreen() {
   const [text, setText] =
     useState('');
@@ -49,6 +84,12 @@ export default function CreateScreen() {
     setReplyEnabled,
   ] =
     useState(true);
+
+  const [
+    joinTimer,
+    setJoinTimer,
+  ] =
+    useState<JoinTimer>('none');
 
   const loadDefaults =
     async () => {
@@ -125,6 +166,7 @@ export default function CreateScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setJoinTimer('none');
       loadDefaults();
 
       return () => {
@@ -189,6 +231,11 @@ export default function CreateScreen() {
 
               join_enabled:
                 joinEnabled,
+
+              join_until:
+                joinEnabled
+                  ? getJoinUntil(joinTimer)
+                  : null,
 
               /*
                * Like is always available
@@ -457,6 +504,52 @@ export default function CreateScreen() {
                 </View>
               </View>
 
+              {joinEnabled && (
+                <View style={styles.timerSection}>
+                  <Text style={styles.timerLabel}>
+                    JOIN TIMER
+                  </Text>
+
+                  <View style={styles.timerOptions}>
+                    {JOIN_TIMER_OPTIONS.map(
+                      (option) => {
+                        const selected =
+                          joinTimer === option.value;
+
+                        return (
+                          <Pressable
+                            key={option.value}
+                            onPress={() =>
+                              setJoinTimer(option.value)
+                            }
+                            disabled={loading}
+                            style={[
+                              styles.timerOption,
+                              selected &&
+                                styles.timerOptionSelected,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.timerOptionText,
+                                selected &&
+                                  styles.timerOptionTextSelected,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      }
+                    )}
+                  </View>
+
+                  <Text style={styles.timerHelp}>
+                    Optional. When the timer ends, Join closes automatically. The Drop, Likes, Reply and existing chats stay available.
+                  </Text>
+                </View>
+              )}
+
               <Text
                 style={
                   styles.optionsHelp
@@ -610,6 +703,58 @@ const styles =
       fontSize: 12,
       lineHeight: 17,
       marginTop: 3,
+    },
+
+    timerSection: {
+      marginHorizontal: 20,
+      marginTop: 18,
+    },
+
+    timerLabel: {
+      color: '#555555',
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1.5,
+      marginBottom: 9,
+    },
+
+    timerOptions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+
+    timerOption: {
+      minWidth: 58,
+      height: 36,
+      paddingHorizontal: 12,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    timerOptionSelected: {
+      backgroundColor: '#FFFFFF',
+      borderColor: '#FFFFFF',
+    },
+
+    timerOptionText: {
+      color: '#777777',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+
+    timerOptionTextSelected: {
+      color: '#000000',
+    },
+
+    timerHelp: {
+      color: '#555555',
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: 9,
     },
 
     optionsHelp: {

@@ -233,6 +233,10 @@ export default function UserProfileScreen() {
               'author_id',
               loadedProfile.id
             )
+            .is(
+              'deleted_at',
+              null
+            )
             .order(
               'created_at',
               {
