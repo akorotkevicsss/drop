@@ -2,14 +2,14 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
 } from 'react-native';
 
 import { supabase } from '@/lib/supabase';
@@ -446,6 +446,9 @@ export default function SettingsScreen() {
             handleBack
           }
           hitSlop={10}
+          style={
+            styles.backHitArea
+          }
         >
           <Text
             style={
@@ -887,9 +890,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 58,
-      paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingTop: 56,
+      paddingHorizontal: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -899,21 +902,28 @@ const styles =
         'space-between',
     },
 
+    backHitArea: {
+      width: 36,
+      height: 40,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+
     back: {
       color: '#FFFFFF',
-      fontSize: 40,
+      fontSize: 36,
       fontWeight: '200',
-      lineHeight: 40,
+      lineHeight: 36,
     },
 
     title: {
       color: '#FFFFFF',
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: '600',
     },
 
     headerSpacer: {
-      width: 24,
+      width: 36,
     },
 
     content: {
@@ -935,7 +945,7 @@ const styles =
       minHeight: 66,
       paddingHorizontal: 16,
       paddingVertical: 12,
-      borderRadius: 14,
+      borderRadius: 16,
       backgroundColor:
         '#151515',
       flexDirection: 'row',
@@ -970,7 +980,7 @@ const styles =
       marginHorizontal: 20,
       marginBottom: 12,
       padding: 16,
-      borderRadius: 14,
+      borderRadius: 16,
       backgroundColor:
         '#151515',
     },
@@ -1026,7 +1036,7 @@ const styles =
 
     switchGroup: {
       marginHorizontal: 20,
-      borderRadius: 14,
+      borderRadius: 16,
       backgroundColor:
         '#151515',
       overflow: 'hidden',
@@ -1055,10 +1065,10 @@ const styles =
     },
 
     saveButton: {
-      height: 46,
+      height: 48,
       marginHorizontal: 20,
       marginTop: 24,
-      borderRadius: 14,
+      borderRadius: 16,
       backgroundColor:
         '#FFFFFF',
       alignItems: 'center',
@@ -1077,8 +1087,8 @@ const styles =
 
     logoutButton: {
       marginHorizontal: 20,
-      height: 46,
-      borderRadius: 14,
+      height: 48,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor:
         '#2A2A2A',

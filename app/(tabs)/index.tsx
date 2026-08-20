@@ -1362,6 +1362,10 @@ export default function HomeScreen() {
               '/create'
             )
           }
+          activeOpacity={0.7}
+          style={
+            styles.createButton
+          }
         >
           <Text
             style={
@@ -1836,9 +1840,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -1865,9 +1869,19 @@ const styles =
       marginTop: 3,
     },
 
+    createButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
     headerButton: {
       color: '#FFFFFF',
-      fontSize: 28,
+      fontSize: 25,
       fontWeight: '300',
     },
 
@@ -2035,7 +2049,7 @@ const styles =
 
     emptyContainer: {
       paddingHorizontal: 20,
-      paddingTop: 60,
+      paddingTop: 56,
       alignItems:
         'center',
     },

@@ -1361,7 +1361,7 @@ export default function ExploreScreen() {
               styles.feedLabel
             }
           >
-            GLOBAL
+            DISCOVER
           </Text>
         </View>
 
@@ -1810,9 +1810,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -2020,7 +2020,7 @@ const styles =
 
     emptyContainer: {
       paddingHorizontal: 20,
-      paddingTop: 60,
+      paddingTop: 56,
       alignItems:
         'center',
     },

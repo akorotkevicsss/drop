@@ -1,22 +1,22 @@
 import {
-    Stack,
-    router,
-    useLocalSearchParams,
+  Stack,
+  router,
+  useLocalSearchParams,
 } from 'expo-router';
 
 import {
-    useEffect,
-    useState,
+  useEffect,
+  useState,
 } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import { UserAvatar } from '@/components/user-avatar';
@@ -265,6 +265,9 @@ export default function ConnectionsScreen() {
             router.back()
           }
           hitSlop={10}
+          style={
+            styles.backHitArea
+          }
         >
           <Text
             style={
@@ -384,7 +387,7 @@ export default function ConnectionsScreen() {
                     name={
                       name
                     }
-                    size={48}
+                    size={46}
                   />
 
                   <View
@@ -447,8 +450,8 @@ const styles =
     },
 
     header: {
-      paddingTop: 58,
-      paddingHorizontal: 20,
+      paddingTop: 56,
+      paddingHorizontal: 16,
       paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
@@ -457,10 +460,17 @@ const styles =
       alignItems: 'center',
     },
 
+    backHitArea: {
+      width: 36,
+      height: 40,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+
     back: {
       color: '#FFFFFF',
-      fontSize: 40,
-      lineHeight: 40,
+      fontSize: 36,
+      lineHeight: 36,
       fontWeight: '200',
     },
 
@@ -482,11 +492,11 @@ const styles =
     },
 
     headerSpacer: {
-      width: 24,
+      width: 36,
     },
 
     personRow: {
-      minHeight: 72,
+      minHeight: 68,
       paddingHorizontal: 20,
       flexDirection: 'row',
       alignItems: 'center',
@@ -513,12 +523,12 @@ const styles =
     personUsername: {
       color: '#666666',
       fontSize: 13,
-      marginTop: 3,
+      marginTop: 2,
     },
 
     chevron: {
-      color: '#555555',
-      fontSize: 28,
+      color: '#444444',
+      fontSize: 26,
       fontWeight: '200',
     },
 

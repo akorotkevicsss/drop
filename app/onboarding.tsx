@@ -164,7 +164,7 @@ export default function OnboardingScreen() {
         await refreshProfileGate();
 
         router.replace(
-          '/(tabs)'
+          '/(tabs)/index'
         );
       } finally {
         setLoading(
@@ -339,7 +339,7 @@ const styles =
     },
 
     top: {
-      paddingTop: 62,
+      paddingTop: 56,
       flexDirection:
         'row',
       alignItems:

@@ -266,7 +266,9 @@ export default function CreateScreen() {
 
         Keyboard.dismiss();
 
-        router.back();
+        router.replace(
+        '/(tabs)/index'
+      );
       } catch (error) {
         console.error(
           'CREATE DROP ERROR:',
@@ -578,9 +580,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -599,7 +601,7 @@ const styles =
 
     title: {
       color: '#FFFFFF',
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: '600',
     },
 
@@ -640,7 +642,7 @@ const styles =
       lineHeight: 32,
       paddingHorizontal: 20,
       paddingTop: 28,
-      minHeight: 180,
+      minHeight: 168,
       textAlignVertical:
         'top',
     },
@@ -653,7 +655,7 @@ const styles =
     },
 
     options: {
-      marginTop: 28,
+      marginTop: 24,
     },
 
     optionsTitle: {
@@ -667,7 +669,7 @@ const styles =
 
     optionCard: {
       marginHorizontal: 20,
-      borderRadius: 14,
+      borderRadius: 16,
       backgroundColor:
         '#151515',
       overflow: 'hidden',

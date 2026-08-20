@@ -750,9 +750,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -775,14 +775,14 @@ const styles =
 
     emptyTitle: {
       color: '#FFFFFF',
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: '600',
     },
 
     emptySubtitle: {
       color: '#666666',
       fontSize: 14,
-      lineHeight: 20,
+      lineHeight: 19,
       textAlign: 'center',
       marginTop: 8,
     },
@@ -790,7 +790,7 @@ const styles =
     notification: {
       minHeight: 76,
       paddingHorizontal: 20,
-      paddingVertical: 15,
+      paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',

@@ -224,6 +224,7 @@ export default function FindScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
+          clearButtonMode="while-editing"
         />
       </View>
 
@@ -367,9 +368,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -388,8 +389,8 @@ const styles =
     },
 
     searchInput: {
-      height: 46,
-      borderRadius: 14,
+      height: 44,
+      borderRadius: 22,
       backgroundColor:
         '#151515',
       color: '#FFFFFF',

@@ -517,6 +517,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor:
           Colors[
@@ -566,8 +567,8 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
-              name="sparkles"
+              size={24}
+              name="safari.fill"
               color={
                 color
               }
@@ -586,7 +587,7 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
+              size={24}
               name="magnifyingglass"
               color={
                 color
@@ -606,7 +607,7 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
+              size={24}
               name="house.fill"
               color={
                 color
@@ -635,7 +636,7 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
+              size={24}
               name="message.fill"
               color={
                 color
@@ -664,7 +665,7 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
+              size={24}
               name="bell.fill"
               color={
                 color
@@ -684,7 +685,7 @@ export default function TabLayout() {
             color,
           }) => (
             <IconSymbol
-              size={28}
+              size={24}
               name="person.fill"
               color={
                 color

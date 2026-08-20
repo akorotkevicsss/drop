@@ -323,7 +323,7 @@ const styles =
 
     logo: {
       color: '#FFFFFF',
-      fontSize: 42,
+      fontSize: 40,
       fontWeight:
         '700',
       letterSpacing: 6,

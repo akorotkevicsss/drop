@@ -419,6 +419,10 @@ export default function RequestsScreen() {
             onPress={() =>
               router.back()
             }
+            activeOpacity={0.7}
+            style={
+              styles.backHitArea
+            }
           >
             <Text
               style={
@@ -908,9 +912,9 @@ const styles =
     },
 
     header: {
-      paddingTop: 60,
+      paddingTop: 56,
       paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -920,26 +924,33 @@ const styles =
         'space-between',
     },
 
+    backHitArea: {
+      width: 36,
+      height: 40,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+
     backButton: {
       color: '#FFFFFF',
-      fontSize: 40,
-      lineHeight: 40,
+      fontSize: 36,
+      lineHeight: 36,
       fontWeight: '200',
     },
 
     title: {
       color: '#FFFFFF',
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: '600',
     },
 
     headerSpacer: {
-      width: 28,
+      width: 36,
     },
 
     dropPreview: {
       paddingHorizontal: 20,
-      paddingVertical: 24,
+      paddingVertical: 20,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -954,7 +965,7 @@ const styles =
 
     dropText: {
       color: '#FFFFFF',
-      fontSize: 20,
+      fontSize: 19,
       lineHeight: 28,
       marginTop: 10,
     },
@@ -977,7 +988,7 @@ const styles =
 
     requestRow: {
       paddingHorizontal: 20,
-      paddingVertical: 18,
+      paddingVertical: 16,
       borderBottomWidth: 1,
       borderBottomColor:
         '#1A1A1A',
@@ -1028,7 +1039,7 @@ const styles =
       backgroundColor:
         '#FFFFFF',
       paddingHorizontal: 18,
-      paddingVertical: 9,
+      paddingVertical: 8,
       borderRadius: 20,
     },
 
@@ -1042,7 +1053,7 @@ const styles =
       backgroundColor:
         '#171717',
       paddingHorizontal: 18,
-      paddingVertical: 9,
+      paddingVertical: 8,
       borderRadius: 20,
     },
 

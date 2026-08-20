@@ -669,6 +669,10 @@ export default function EditProfileScreen() {
             onPress={() =>
               router.back()
             }
+            hitSlop={10}
+            style={
+              styles.backHitArea
+            }
           >
             <Text style={styles.back}>
               ‹
@@ -845,9 +849,9 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    paddingTop: 58,
+    paddingTop: 56,
     paddingHorizontal: 20,
-    paddingBottom: 18,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1A1A1A',
     flexDirection: 'row',
@@ -856,21 +860,28 @@ const styles = StyleSheet.create({
       'space-between',
   },
 
+  backHitArea: {
+    width: 36,
+    height: 40,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+
   back: {
     color: '#FFFFFF',
-    fontSize: 40,
+    fontSize: 36,
     fontWeight: '200',
-    lineHeight: 40,
+    lineHeight: 36,
   },
 
   title: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
   },
 
   headerSpacer: {
-    width: 24,
+    width: 36,
   },
 
 
@@ -918,7 +929,7 @@ const styles = StyleSheet.create({
   input: {
     marginHorizontal: 20,
     backgroundColor: '#151515',
-    borderRadius: 14,
+    borderRadius: 16,
     color: '#FFFFFF',
     fontSize: 16,
     paddingHorizontal: 16,
