@@ -55,6 +55,12 @@ type MyJoinRequest = {
     | 'declined';
 };
 
+type ConversationRow = {
+  id: string;
+  author_id: string;
+  participant_id: string;
+};
+
 function formatDropTime(createdAt: string) {
   const created = new Date(createdAt);
   const now = new Date();
@@ -96,76 +102,66 @@ export default function HomeScreen() {
   const [
     currentUserId,
     setCurrentUserId,
-  ] =
-    useState<string | null>(null);
+  ] = useState<string | null>(null);
 
   const [
     joinStatuses,
     setJoinStatuses,
-  ] =
-    useState<
-      Record<string, JoinStatus>
-    >({});
+  ] = useState<
+    Record<string, JoinStatus>
+  >({});
 
   const [
     pendingCounts,
     setPendingCounts,
-  ] =
-    useState<
-      Record<string, number>
-    >({});
+  ] = useState<
+    Record<string, number>
+  >({});
 
   const [
     likedDropIds,
     setLikedDropIds,
-  ] =
-    useState<Set<string>>(
-      new Set()
-    );
+  ] = useState<Set<string>>(
+    new Set()
+  );
 
   const [
     likeCounts,
     setLikeCounts,
-  ] =
-    useState<
-      Record<string, number>
-    >({});
+  ] = useState<
+    Record<string, number>
+  >({});
 
   const [
     joinLoadingId,
     setJoinLoadingId,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     likeLoadingId,
     setLikeLoadingId,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     replyLoadingId,
     setReplyLoadingId,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     loading,
     setLoading,
-  ] =
-    useState(true);
+  ] = useState(true);
 
   const [
     refreshing,
     setRefreshing,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const loadDrops = async (
     manualRefresh = false
@@ -198,6 +194,10 @@ export default function HomeScreen() {
       setCurrentUserId(
         user.id
       );
+
+      /*
+       * LOAD DROPS
+       */
 
       const {
         data,
@@ -242,28 +242,26 @@ export default function HomeScreen() {
       }
 
       const loadedDrops =
-        (data ??
-          []) as unknown as Drop[];
+        (data ?? []) as unknown as Drop[];
 
       setDrops(
         loadedDrops
       );
 
+      /*
+       * LOAD LIKES
+       */
+
       const {
         data: allLikes,
-        error:
-          allLikesError,
+        error: allLikesError,
       } = await supabase
-        .from(
-          'drop_likes'
-        )
+        .from('drop_likes')
         .select(
           'drop_id, user_id'
         );
 
-      if (
-        allLikesError
-      ) {
+      if (allLikesError) {
         console.error(
           'LOAD LIKES ERROR:',
           allLikesError
@@ -311,11 +309,13 @@ export default function HomeScreen() {
         );
       }
 
+      /*
+       * LOAD MY JOIN STATUSES
+       */
+
       const {
-        data:
-          myRequests,
-        error:
-          myRequestsError,
+        data: myRequests,
+        error: myRequestsError,
       } = await supabase
         .from(
           'join_requests'
@@ -359,6 +359,11 @@ export default function HomeScreen() {
         );
       }
 
+      /*
+       * LOAD PENDING COUNTS
+       * FOR MY OWN DROPS
+       */
+
       const ownDropIds =
         loadedDrops
           .filter(
@@ -380,10 +385,8 @@ export default function HomeScreen() {
         );
       } else {
         const {
-          data:
-            pendingRequests,
-          error:
-            pendingError,
+          data: pendingRequests,
+          error: pendingError,
         } =
           await supabase
             .from(
@@ -419,16 +422,13 @@ export default function HomeScreen() {
             pendingRequests ??
             []
           ).forEach(
-            (
-              request
-            ) => {
+            (request) => {
               counts[
                 request.drop_id
               ] =
                 (
                   counts[
-                    request
-                      .drop_id
+                    request.drop_id
                   ] ?? 0
                 ) + 1;
             }
@@ -439,9 +439,7 @@ export default function HomeScreen() {
           );
         }
       }
-    } catch (
-      error
-    ) {
+    } catch (error) {
       console.error(
         'LOAD DROPS ERROR:',
         error
@@ -470,6 +468,10 @@ export default function HomeScreen() {
       []
     )
   );
+
+  /*
+   * LIKE / UNLIKE
+   */
 
   const handleLike =
     async (
@@ -525,9 +527,7 @@ export default function HomeScreen() {
           }
 
           setLikedDropIds(
-            (
-              current
-            ) => {
+            (current) => {
               const next =
                 new Set(
                   current
@@ -542,9 +542,7 @@ export default function HomeScreen() {
           );
 
           setLikeCounts(
-            (
-              current
-            ) => ({
+            (current) => ({
               ...current,
 
               [drop.id]:
@@ -592,9 +590,7 @@ export default function HomeScreen() {
         }
 
         setLikedDropIds(
-          (
-            current
-          ) => {
+          (current) => {
             const next =
               new Set(
                 current
@@ -609,9 +605,7 @@ export default function HomeScreen() {
         );
 
         setLikeCounts(
-          (
-            current
-          ) => ({
+          (current) => ({
             ...current,
 
             [drop.id]:
@@ -628,6 +622,10 @@ export default function HomeScreen() {
         );
       }
     };
+
+  /*
+   * JOIN / CANCEL JOIN
+   */
 
   const handleJoin =
     async (
@@ -649,6 +647,10 @@ export default function HomeScreen() {
         setJoinLoadingId(
           drop.id
         );
+
+        /*
+         * CANCEL PENDING
+         */
 
         if (
           currentStatus ===
@@ -686,9 +688,7 @@ export default function HomeScreen() {
           }
 
           setJoinStatuses(
-            (
-              current
-            ) => ({
+            (current) => ({
               ...current,
 
               [drop.id]:
@@ -699,12 +699,21 @@ export default function HomeScreen() {
           return;
         }
 
+        /*
+         * ALREADY JOINED
+         */
+
         if (
           currentStatus ===
           'accepted'
         ) {
           return;
         }
+
+        /*
+         * DECLINED BEFORE:
+         * DELETE OLD ROW FIRST
+         */
 
         if (
           currentStatus ===
@@ -731,6 +740,11 @@ export default function HomeScreen() {
           if (
             deleteError
           ) {
+            console.error(
+              'DELETE OLD JOIN ERROR:',
+              deleteError
+            );
+
             Alert.alert(
               'Error',
               'Could not send a new request.'
@@ -739,6 +753,10 @@ export default function HomeScreen() {
             return;
           }
         }
+
+        /*
+         * CREATE JOIN REQUEST
+         */
 
         const {
           error,
@@ -773,9 +791,7 @@ export default function HomeScreen() {
         }
 
         setJoinStatuses(
-          (
-            current
-          ) => ({
+          (current) => ({
             ...current,
 
             [drop.id]:
@@ -788,6 +804,15 @@ export default function HomeScreen() {
         );
       }
     };
+
+  /*
+   * UNIFIED DM REPLY
+   *
+   * One user pair = one conversation.
+   *
+   * Drop is stored as a conversation event,
+   * not as a separate chat.
+   */
 
   const handleReply =
     async (
@@ -812,14 +837,18 @@ export default function HomeScreen() {
           drop.id
         );
 
+        let conversationId:
+          string | null = null;
+
         /*
-         * Сначала ищем существующий conversation
-         * для этого Drop и этой пары.
+         * 1.
+         * LOOK FOR EXISTING DM
+         * IN BOTH DIRECTIONS
          */
 
         const {
           data:
-            existingConversation,
+            existingConversations,
           error:
             existingError,
         } =
@@ -827,26 +856,21 @@ export default function HomeScreen() {
             .from(
               'conversations'
             )
-            .select('id')
-            .eq(
-              'drop_id',
-              drop.id
+            .select(`
+              id,
+              author_id,
+              participant_id
+            `)
+            .or(
+              `and(author_id.eq.${drop.author_id},participant_id.eq.${currentUserId}),and(author_id.eq.${currentUserId},participant_id.eq.${drop.author_id})`
             )
-            .eq(
-              'author_id',
-              drop.author_id
-            )
-            .eq(
-              'participant_id',
-              currentUserId
-            )
-            .maybeSingle();
+            .limit(1);
 
         if (
           existingError
         ) {
           console.error(
-            'FIND REPLY CONVERSATION ERROR:',
+            'FIND DM ERROR:',
             existingError
           );
 
@@ -858,107 +882,237 @@ export default function HomeScreen() {
           return;
         }
 
+        const existingConversation =
+          (
+            existingConversations ??
+            []
+          )[0] as
+            | ConversationRow
+            | undefined;
+
         if (
           existingConversation
         ) {
-          router.push(
-            `/chat/${existingConversation.id}`
+          conversationId =
+            existingConversation.id;
+        }
+
+        /*
+         * 2.
+         * CREATE DM IF THESE TWO USERS
+         * HAVE NEVER TALKED BEFORE
+         */
+
+        if (
+          !conversationId
+        ) {
+          const {
+            data:
+              newConversation,
+            error:
+              createError,
+          } =
+            await supabase
+              .from(
+                'conversations'
+              )
+              .insert({
+                /*
+                 * Legacy field.
+                 *
+                 * We keep the first Drop here
+                 * for now so the old chat UI
+                 * does not break.
+                 *
+                 * Later [id].tsx will stop
+                 * depending on conversations.drop_id.
+                 */
+
+                drop_id:
+                  drop.id,
+
+                join_request_id:
+                  null,
+
+                author_id:
+                  drop.author_id,
+
+                participant_id:
+                  currentUserId,
+
+                source:
+                  'reply',
+              })
+              .select(
+                'id'
+              )
+              .single();
+
+          if (
+            createError
+          ) {
+            console.error(
+              'CREATE DM ERROR:',
+              createError
+            );
+
+            /*
+             * Race-condition protection.
+             *
+             * Unique pair index may have blocked
+             * a duplicate DM that appeared
+             * between SELECT and INSERT.
+             */
+
+            const {
+              data:
+                fallbackConversations,
+              error:
+                fallbackError,
+            } =
+              await supabase
+                .from(
+                  'conversations'
+                )
+                .select(`
+                  id,
+                  author_id,
+                  participant_id
+                `)
+                .or(
+                  `and(author_id.eq.${drop.author_id},participant_id.eq.${currentUserId}),and(author_id.eq.${currentUserId},participant_id.eq.${drop.author_id})`
+                )
+                .limit(1);
+
+            if (
+              fallbackError
+            ) {
+              console.error(
+                'FALLBACK DM ERROR:',
+                fallbackError
+              );
+            }
+
+            const fallbackConversation =
+              (
+                fallbackConversations ??
+                []
+              )[0] as
+                | ConversationRow
+                | undefined;
+
+            if (
+              !fallbackConversation
+            ) {
+              Alert.alert(
+                'Error',
+                'Could not start a conversation.'
+              );
+
+              return;
+            }
+
+            conversationId =
+              fallbackConversation.id;
+          } else {
+            conversationId =
+              newConversation.id;
+          }
+        }
+
+        /*
+         * SAFETY CHECK
+         */
+
+        if (
+          !conversationId
+        ) {
+          Alert.alert(
+            'Error',
+            'Could not open this conversation.'
           );
 
           return;
         }
 
         /*
-         * Conversation ещё нет —
-         * создаём независимый Reply-chat.
+         * 3.
+         * STORE DROP CONTEXT
+         * INSIDE THE UNIFIED DM
          */
 
         const {
-          data:
-            newConversation,
           error:
-            createError,
+            eventError,
         } =
           await supabase
             .from(
-              'conversations'
+              'conversation_events'
             )
             .insert({
+              conversation_id:
+                conversationId,
+
+              actor_id:
+                currentUserId,
+
               drop_id:
                 drop.id,
 
-              join_request_id:
-                null,
-
-              author_id:
-                drop.author_id,
-
-              participant_id:
-                currentUserId,
-
-              source:
+              event_type:
                 'reply',
-            })
-            .select('id')
-            .single();
+
+              drop_text_snapshot:
+                drop.text,
+            });
 
         if (
-          createError
+          eventError
         ) {
-          console.error(
-            'CREATE REPLY CONVERSATION ERROR:',
-            createError
-          );
-
           /*
-           * На случай, если между SELECT и INSERT
-           * conversation уже успел появиться,
-           * ещё раз пытаемся его найти.
+           * 23505:
+           * this exact Reply event
+           * already exists.
+           *
+           * That's fine.
+           * We simply reopen the DM.
            */
 
-          const {
-            data:
-              fallbackConversation,
-          } =
-            await supabase
-              .from(
-                'conversations'
-              )
-              .select('id')
-              .eq(
-                'drop_id',
-                drop.id
-              )
-              .eq(
-                'author_id',
-                drop.author_id
-              )
-              .eq(
-                'participant_id',
-                currentUserId
-              )
-              .maybeSingle();
-
           if (
-            fallbackConversation
+            eventError.code !==
+            '23505'
           ) {
-            router.push(
-              `/chat/${fallbackConversation.id}`
+            console.error(
+              'CREATE REPLY EVENT ERROR:',
+              eventError
+            );
+
+            Alert.alert(
+              'Error',
+              'Could not attach this Drop to the conversation.'
             );
 
             return;
           }
-
-          Alert.alert(
-            'Error',
-            'Could not start a Reply conversation.'
-          );
-
-          return;
         }
 
+        /*
+         * 4.
+         * OPEN THE SINGLE DM
+         */
+
         router.push(
-          `/chat/${newConversation.id}`
+          `/chat/${conversationId}`
+        );
+      } catch (error) {
+        console.error(
+          'REPLY ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Error',
+          'Something went wrong.'
         );
       } finally {
         setReplyLoadingId(
@@ -966,6 +1120,10 @@ export default function HomeScreen() {
         );
       }
     };
+
+  /*
+   * PROFILE
+   */
 
   const openProfile = (
     drop: Drop
@@ -1186,7 +1344,9 @@ export default function HomeScreen() {
                         {username
                           ? `@${username}`
                           : ''}
+
                         {' · '}
+
                         {time}
                       </Text>
                     </View>
@@ -1384,10 +1544,12 @@ export default function HomeScreen() {
                             {
                               pendingCount
                             }{' '}
+
                             {pendingCount ===
                             1
                               ? 'request'
                               : 'requests'}
+
                             {'  →'}
                           </Text>
                         </TouchableOpacity>

@@ -224,54 +224,149 @@ export default function RequestsScreen() {
     }
   };
 
-  const updateRequest = async (
-    requestId: string,
-    status:
-      | 'accepted'
-      | 'declined'
-  ) => {
-    try {
-      setUpdatingId(requestId);
+      const updateRequest = async (
+      requestId: string,
+      status: 'accepted' | 'declined'
+    ) => {
+      try {
+        setUpdatingId(requestId);
 
-      const { error } =
-        await supabase
+        const request = requests.find(
+          (item) => item.id === requestId
+        );
+
+        if (!request) {
+          Alert.alert(
+            'Error',
+            'Join request not found.'
+          );
+
+          return;
+        }
+
+        const { error } = await supabase
           .from('join_requests')
           .update({
             status,
           })
           .eq('id', requestId);
 
-      if (error) {
-        console.error(
-          'UPDATE JOIN REQUEST ERROR:',
-          error
-        );
+        if (error) {
+          console.error(
+            'UPDATE JOIN REQUEST ERROR:',
+            error
+          );
 
-        Alert.alert(
-          'Error',
-          `Could not ${status === 'accepted' ? 'accept' : 'decline'} this request.`
-        );
+          Alert.alert(
+            'Error',
+            `Could not ${
+              status === 'accepted'
+                ? 'accept'
+                : 'decline'
+            } this request.`
+          );
 
-        return;
-      }
+          return;
+        }
 
-      setRequests(
-        (current) =>
-          current.map(
-            (request) =>
-              request.id ===
-              requestId
-                ? {
-                    ...request,
-                    status,
-                  }
-                : request
+        setRequests((current) =>
+          current.map((item) =>
+            item.id === requestId
+              ? {
+                  ...item,
+                  status,
+                }
+              : item
           )
-      );
-    } finally {
-      setUpdatingId(null);
-    }
-  };
+        );
+
+        // Decline ничего больше не делает.
+        if (status !== 'accepted') {
+          return;
+        }
+
+        /*
+        * После Accept backend создаёт unified conversation
+        * или использует уже существующий.
+        *
+        * Ищем чат между:
+        *   author_id      = автор Drop (мы)
+        *   participant_id = пользователь, которого приняли
+        */
+
+        const findConversation = async () => {
+          const {
+            data: conversation,
+            error: conversationError,
+          } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('author_id', drop!.author_id)
+            .eq('participant_id', request.user_id)
+            .maybeSingle();
+
+          if (conversationError) {
+            console.error(
+              'FIND CONVERSATION AFTER ACCEPT ERROR:',
+              conversationError
+            );
+
+            return null;
+          }
+
+          return conversation;
+        };
+
+        /*
+        * Trigger выполняется на backend.
+        * Обычно conversation уже существует к моменту,
+        * когда UPDATE вернулся.
+        *
+        * Но оставляем несколько коротких попыток,
+        * чтобы UI не зависел от тайминга.
+        */
+
+        let conversation =
+          await findConversation();
+
+        if (!conversation) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 150)
+          );
+
+          conversation =
+            await findConversation();
+        }
+
+        if (!conversation) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 300)
+          );
+
+          conversation =
+            await findConversation();
+        }
+
+        if (!conversation) {
+          console.error(
+            'Conversation was not found after accepting Join request.'
+          );
+
+          Alert.alert(
+            'Joined',
+            'The request was accepted, but the conversation could not be opened automatically.'
+          );
+
+          return;
+        }
+
+        router.replace(
+          `/chat/${conversation.id}`
+        );
+      } finally {
+        setUpdatingId(null);
+      }
+    };
 
   if (loading) {
     return (
