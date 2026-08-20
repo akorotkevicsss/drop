@@ -1,6 +1,16 @@
-import { router } from 'expo-router';
+import {
+  router,
+  useFocusEffect,
+} from 'expo-router';
 
 import {
+  useCallback,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,12 +18,207 @@ import {
   View,
 } from 'react-native';
 
-import { useChatStore } from '@/store/chats';
+import { supabase } from '@/lib/supabase';
+
+type Profile = {
+  username: string | null;
+  display_name: string | null;
+};
+
+type Conversation = {
+  id: string;
+  drop_id: string;
+  author_id: string;
+  participant_id: string;
+  created_at: string;
+
+  drop: {
+    text: string;
+  } | null;
+
+  otherUser: Profile | null;
+
+  lastMessage: {
+    text: string;
+    created_at: string;
+  } | null;
+};
 
 export default function InboxScreen() {
-  const conversations = useChatStore(
-    (state) => state.conversations
+  const [conversations, setConversations] =
+    useState<Conversation[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return;
+      }
+
+      const {
+        data: conversationData,
+        error: conversationError,
+      } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          drop_id,
+          author_id,
+          participant_id,
+          created_at,
+          drops!conversations_drop_id_fkey (
+            text
+          )
+        `)
+        .order('created_at', {
+          ascending: false,
+        });
+
+      if (conversationError) {
+        console.error(
+          'INBOX ERROR:',
+          conversationError
+        );
+
+        Alert.alert(
+          'Error',
+          'Could not load conversations.'
+        );
+
+        return;
+      }
+
+      const rawConversations =
+        conversationData ?? [];
+
+      const otherUserIds =
+        rawConversations.map(
+          (conversation) =>
+            conversation.author_id === user.id
+              ? conversation.participant_id
+              : conversation.author_id
+        );
+
+      let profiles: {
+        id: string;
+        username: string | null;
+        display_name: string | null;
+      }[] = [];
+
+      if (otherUserIds.length > 0) {
+        const {
+          data: profileData,
+        } = await supabase
+          .from('profiles')
+          .select(`
+            id,
+            username,
+            display_name
+          `)
+          .in('id', otherUserIds);
+
+        profiles = profileData ?? [];
+      }
+
+      const result: Conversation[] =
+        await Promise.all(
+          rawConversations.map(
+            async (conversation) => {
+              const otherUserId =
+                conversation.author_id === user.id
+                  ? conversation.participant_id
+                  : conversation.author_id;
+
+              const profile =
+                profiles.find(
+                  (item) =>
+                    item.id === otherUserId
+                );
+
+              const {
+                data: lastMessageData,
+              } = await supabase
+                .from('messages')
+                .select(`
+                  text,
+                  created_at
+                `)
+                .eq(
+                  'conversation_id',
+                  conversation.id
+                )
+                .order('created_at', {
+                  ascending: false,
+                })
+                .limit(1)
+                .maybeSingle();
+
+              return {
+                id: conversation.id,
+                drop_id:
+                  conversation.drop_id,
+                author_id:
+                  conversation.author_id,
+                participant_id:
+                  conversation.participant_id,
+                created_at:
+                  conversation.created_at,
+
+                drop:
+                  conversation.drops as unknown as {
+                    text: string;
+                  } | null,
+
+                otherUser: profile
+                  ? {
+                      username:
+                        profile.username,
+
+                      display_name:
+                        profile.display_name,
+                    }
+                  : null,
+
+                lastMessage:
+                  lastMessageData ?? null,
+              };
+            }
+          )
+        );
+
+      setConversations(result);
+    } catch (error) {
+      console.error(
+        'INBOX LOAD ERROR:',
+        error
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [])
   );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -30,64 +235,101 @@ export default function InboxScreen() {
           </Text>
 
           <Text style={styles.emptySubtitle}>
-            When someone joins a Drop, your conversation
-            will appear here.
+            When someone joins a Drop,
+            your conversation will appear here.
           </Text>
         </View>
       ) : (
         <ScrollView>
-          {conversations.map((conversation) => {
-            const lastMessage =
-              conversation.messages[
-                conversation.messages.length - 1
-              ];
+          {conversations.map(
+            (conversation) => {
+              const name =
+                conversation.otherUser
+                  ?.display_name ||
+                'Unnamed user';
 
-            return (
-              <TouchableOpacity
-                key={conversation.id}
-                style={styles.conversation}
-                onPress={() =>
-                  router.push(
-                    `/chat/${conversation.id}`
-                  )
-                }
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {conversation.participantName.charAt(0)}
-                  </Text>
-                </View>
+              const username =
+                conversation.otherUser
+                  ?.username;
 
-                <View style={styles.conversationContent}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name}>
-                      {conversation.participantName}
-                    </Text>
-
-                    <Text style={styles.username}>
-                      {conversation.participantUsername}
+              return (
+                <TouchableOpacity
+                  key={conversation.id}
+                  style={styles.conversation}
+                  onPress={() =>
+                    router.push(
+                      `/chat/${conversation.id}`
+                    )
+                  }
+                >
+                  <View style={styles.avatar}>
+                    <Text
+                      style={
+                        styles.avatarText
+                      }
+                    >
+                      {name
+                        .charAt(0)
+                        .toUpperCase()}
                     </Text>
                   </View>
 
-                  {lastMessage ? (
-                    <Text
-                      style={styles.preview}
-                      numberOfLines={1}
+                  <View
+                    style={
+                      styles.conversationContent
+                    }
+                  >
+                    <View
+                      style={
+                        styles.nameRow
+                      }
                     >
-                      {lastMessage.text}
-                    </Text>
-                  ) : (
-                    <Text
-                      style={styles.contextPreview}
-                      numberOfLines={1}
-                    >
-                      Connected through: {conversation.dropText}
-                    </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                      <Text
+                        style={styles.name}
+                      >
+                        {name}
+                      </Text>
+
+                      {!!username && (
+                        <Text
+                          style={
+                            styles.username
+                          }
+                        >
+                          @{username}
+                        </Text>
+                      )}
+                    </View>
+
+                    {conversation.lastMessage ? (
+                      <Text
+                        style={
+                          styles.preview
+                        }
+                        numberOfLines={1}
+                      >
+                        {
+                          conversation
+                            .lastMessage.text
+                        }
+                      </Text>
+                    ) : (
+                      <Text
+                        style={
+                          styles.contextPreview
+                        }
+                        numberOfLines={1}
+                      >
+                        Connected through:{' '}
+                        {conversation.drop
+                          ?.text}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+          )}
         </ScrollView>
       )}
     </View>
@@ -98,6 +340,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   header: {
