@@ -1,26 +1,26 @@
 import {
-    router,
+  router,
 } from 'expo-router';
 
 import {
-    useState,
+  useState,
 } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    useAppGate,
+  useAppGate,
 } from '@/contexts/app-gate-context';
 
 import {
-    supabase,
+  supabase,
 } from '@/lib/supabase';
 
 type Step = {
@@ -164,7 +164,7 @@ export default function OnboardingScreen() {
         await refreshProfileGate();
 
         router.replace(
-          '/(tabs)/index'
+          '/'
         );
       } finally {
         setLoading(

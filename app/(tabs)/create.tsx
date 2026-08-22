@@ -267,7 +267,7 @@ export default function CreateScreen() {
         Keyboard.dismiss();
 
         router.replace(
-        '/(tabs)/index'
+        '/'
       );
       } catch (error) {
         console.error(
