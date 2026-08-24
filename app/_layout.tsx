@@ -52,32 +52,30 @@ export default function RootLayout() {
     useState(true);
 
   const checkProfile =
-    useCallback(
-      async (
-        currentSession:
-          Session | null
-      ) => {
-        if (!currentSession) {
-          setHasProfile(
-            null
-          );
+  useCallback(
+    async (
+      currentSession:
+        Session | null
+    ) => {
+      if (!currentSession) {
+        setHasProfile(
+          null
+        );
 
-          setOnboardingCompleted(
-            null
-          );
+        setOnboardingCompleted(
+          null
+        );
 
-          setLoading(
-            false
-          );
+        setLoading(
+          false
+        );
 
-          return;
-        }
+        return;
+      }
 
-        const {
-          data,
-          error,
-        } =
-          await supabase
+      const loadProfile =
+        async () => {
+          return await supabase
             .from(
               'profiles'
             )
@@ -91,46 +89,80 @@ export default function RootLayout() {
                 .user.id
             )
             .maybeSingle();
+        };
 
-        if (error) {
-          console.error(
-            'PROFILE CHECK ERROR:',
-            error
-          );
+      let {
+        data,
+        error,
+      } =
+        await loadProfile();
 
-          setHasProfile(
-            false
-          );
+      if (
+        error?.code ===
+          'PGRST303' &&
+        error.message
+          ?.toLowerCase()
+          .includes(
+            'jwt issued at future'
+          )
+      ) {
+        await new Promise(
+          (resolve) =>
+            setTimeout(
+              resolve,
+              1200
+            )
+        );
 
-          setOnboardingCompleted(
-            null
-          );
+        const retryResult =
+          await loadProfile();
 
-          setLoading(
-            false
-          );
+        data =
+          retryResult.data;
 
-          return;
-        }
+        error =
+          retryResult.error;
+      }
+
+      if (error) {
+        console.error(
+          'PROFILE CHECK ERROR:',
+          error
+        );
 
         setHasProfile(
-          !!data
+          false
         );
 
         setOnboardingCompleted(
-          data
-            ? data
-                .onboarding_completed ===
-              true
-            : null
+          null
         );
 
         setLoading(
           false
         );
-      },
-      []
-    );
+
+        return;
+      }
+
+      setHasProfile(
+        !!data
+      );
+
+      setOnboardingCompleted(
+        data
+          ? data
+              .onboarding_completed ===
+            true
+          : null
+      );
+
+      setLoading(
+        false
+      );
+    },
+    []
+  );
 
   const refreshProfileGate =
     useCallback(

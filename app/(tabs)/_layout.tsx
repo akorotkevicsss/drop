@@ -28,6 +28,35 @@ type MessageRow = {
   created_at: string;
 };
 
+const sleep = (ms: number) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, ms)
+  );
+
+const isJwtIssuedAtFutureError = (
+  error: unknown
+) => {
+  if (
+    !error ||
+    typeof error !== 'object'
+  ) {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: string;
+    message?: string;
+  };
+
+  return (
+    candidate.code === 'PGRST303' &&
+    candidate.message
+      ?.toLowerCase()
+      .includes('jwt issued at future') ===
+      true
+  );
+};
+
 export default function TabLayout() {
   const colorScheme =
     useColorScheme();
@@ -66,26 +95,58 @@ export default function TabLayout() {
           return;
         }
 
-        const {
-          count,
-          error,
-        } =
-          await supabase
-            .from(
-              'notifications'
+          let {
+            count,
+            error,
+          } =
+            await supabase
+              .from(
+                'notifications'
+              )
+              .select('*', {
+                count: 'exact',
+                head: true,
+              })
+              .eq(
+                'user_id',
+                userId
+              )
+              .is(
+                'read_at',
+                null
+              );
+
+          if (
+            isJwtIssuedAtFutureError(
+              error
             )
-            .select('*', {
-              count: 'exact',
-              head: true,
-            })
-            .eq(
-              'user_id',
-              userId
-            )
-            .is(
-              'read_at',
-              null
-            );
+          ) {
+            await sleep(1200);
+
+            const retryResult =
+              await supabase
+                .from(
+                  'notifications'
+                )
+                .select('*', {
+                  count: 'exact',
+                  head: true,
+                })
+                .eq(
+                  'user_id',
+                  userId
+                )
+                .is(
+                  'read_at',
+                  null
+                );
+
+            count =
+              retryResult.count;
+
+            error =
+              retryResult.error;
+          }
 
         if (error) {
           console.error(
@@ -125,7 +186,7 @@ export default function TabLayout() {
            * участником которых является текущий user.
            */
 
-          const {
+          let {
             data:
               conversationData,
             error:
@@ -140,6 +201,31 @@ export default function TabLayout() {
                 author_id,
                 participant_id
               `);
+
+          if (
+            isJwtIssuedAtFutureError(
+              conversationError
+            )
+          ) {
+            await sleep(1200);
+
+            const retryResult =
+              await supabase
+                .from(
+                  'conversations'
+                )
+                .select(`
+                  id,
+                  author_id,
+                  participant_id
+                `);
+
+            conversationData =
+              retryResult.data;
+
+            conversationError =
+              retryResult.error;
+          }
 
           if (
             conversationError
