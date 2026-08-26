@@ -10,59 +10,100 @@ import {
 
 import {
   ActivityIndicator,
-  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 
 import { UserAvatar } from '@/components/user-avatar';
+import {
+  DropColors,
+  DropTypography,
+} from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
+type InboxMode =
+  | 'messages'
+  | 'requests';
+
 type Profile = {
+  id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
 };
 
-type LastMessage = {
-  text: string;
-  created_at: string;
+type Member = {
+  conversation_id: string;
+  user_id: string;
+  last_read_at: string | null;
 };
 
-type LastEvent = {
-  event_type: 'join' | 'reply';
-  actor_id: string;
-  drop_text_snapshot: string | null;
-  created_at: string;
-};
-
-type Conversation = {
+type ConversationRow = {
   id: string;
   author_id: string;
   participant_id: string;
+  conversation_type:
+    | 'direct'
+    | 'group';
+  title: string | null;
+  created_by: string | null;
+  is_request: boolean;
   created_at: string;
-
-  otherUser: Profile | null;
-
-  lastMessage: LastMessage | null;
-  lastEvent: LastEvent | null;
-
-  lastActivityAt: string;
 };
 
-function formatInboxTime(dateString: string) {
-  const date = new Date(dateString);
-  const now = new Date();
+type MessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  text: string | null;
+  message_type:
+    | 'text'
+    | 'image'
+    | 'voice';
+  created_at: string;
+};
+
+type EventRow = {
+  conversation_id: string;
+  event_type:
+    | 'join'
+    | 'reply';
+  drop_text_snapshot:
+    string | null;
+  created_at: string;
+};
+
+type InboxConversation = {
+  id: string;
+  conversationType:
+    | 'direct'
+    | 'group';
+  title: string;
+  avatarUrl: string | null;
+  preview: string;
+  lastActivityAt: string;
+  unread: boolean;
+  isRequest: boolean;
+};
+
+function formatInboxTime(
+  dateString: string
+) {
+  const date =
+    new Date(dateString);
 
   const difference =
-    now.getTime() - date.getTime();
+    Date.now() -
+    date.getTime();
 
-  const minutes = Math.floor(
-    difference / (1000 * 60)
-  );
+  const minutes =
+    Math.floor(
+      difference /
+        60000
+    );
 
   if (minutes < 1) {
     return 'now';
@@ -72,17 +113,19 @@ function formatInboxTime(dateString: string) {
     return `${minutes}m`;
   }
 
-  const hours = Math.floor(
-    minutes / 60
-  );
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
 
   if (hours < 24) {
     return `${hours}h`;
   }
 
-  const days = Math.floor(
-    hours / 24
-  );
+  const days =
+    Math.floor(
+      hours / 24
+    );
 
   if (days < 7) {
     return `${days}d`;
@@ -97,12 +140,50 @@ function formatInboxTime(dateString: string) {
   );
 }
 
+function messagePreview(
+  message:
+    MessageRow | null
+) {
+  if (!message) {
+    return null;
+  }
+
+  if (
+    message.message_type ===
+    'image'
+  ) {
+    return 'Photo';
+  }
+
+  if (
+    message.message_type ===
+    'voice'
+  ) {
+    return 'Voice message';
+  }
+
+  return (
+    message.text ||
+    'Message'
+  );
+}
+
 export default function InboxScreen() {
+  const [
+    mode,
+    setMode,
+  ] =
+    useState<InboxMode>(
+      'messages'
+    );
+
   const [
     conversations,
     setConversations,
   ] =
-    useState<Conversation[]>([]);
+    useState<
+      InboxConversation[]
+    >([]);
 
   const [
     loading,
@@ -111,345 +192,602 @@ export default function InboxScreen() {
     useState(true);
 
   const loadConversations =
-    async () => {
-      try {
-        setLoading(true);
-
-        const {
-          data: { user },
-          error: userError,
-        } =
-          await supabase.auth.getUser();
-
-        if (
-          userError ||
-          !user
-        ) {
-          return;
-        }
-
-        /*
-         * LOAD UNIFIED DMs
-         */
-
-        const {
-          data:
-            conversationData,
-          error:
-            conversationError,
-        } =
-          await supabase
-            .from(
-              'conversations'
-            )
-            .select(`
-              id,
-              author_id,
-              participant_id,
-              created_at
-            `);
-
-        if (
-          conversationError
-        ) {
-          console.error(
-            'INBOX ERROR:',
-            conversationError
+    useCallback(
+      async () => {
+        try {
+          setLoading(
+            true
           );
 
-          Alert.alert(
-            'Error',
-            'Could not load conversations.'
-          );
-
-          return;
-        }
-
-        const rawConversations =
-          conversationData ?? [];
-
-        /*
-         * FIND OTHER USERS
-         */
-
-        const otherUserIds =
-          rawConversations.map(
-            (
-              conversation
-            ) =>
-              conversation.author_id ===
-              user.id
-                ? conversation.participant_id
-                : conversation.author_id
-          );
-
-        let profiles: {
-          id: string;
-          username:
-            string | null;
-          display_name:
-            string | null;
-          avatar_url:
-            string | null;
-        }[] = [];
-
-        if (
-          otherUserIds.length >
-          0
-        ) {
           const {
-            data: profileData,
+            data: {
+              user,
+            },
+          } =
+            await supabase.auth.getUser();
+
+          if (!user) {
+            setConversations(
+              []
+            );
+            return;
+          }
+
+          const {
+            data:
+              membershipData,
             error:
-              profileError,
+              membershipError,
           } =
             await supabase
               .from(
-                'profiles'
+                'conversation_members'
               )
               .select(`
-                id,
-                username,
-                display_name,
-                avatar_url
+                conversation_id,
+                user_id,
+                last_read_at
               `)
-              .in(
-                'id',
-                otherUserIds
+              .eq(
+                'user_id',
+                user.id
+              )
+              .is(
+                'left_at',
+                null
               );
 
           if (
-            profileError
+            membershipError
           ) {
             console.error(
-              'INBOX PROFILE ERROR:',
-              profileError
+              'INBOX MEMBERSHIPS ERROR:',
+              membershipError
             );
-          } else {
-            profiles =
-              profileData ?? [];
+            return;
           }
-        }
 
-        /*
-         * LOAD LAST MESSAGE
-         * +
-         * LAST DROP EVENT
-         */
+          const memberships =
+            (
+              membershipData ??
+              []
+            ) as Member[];
 
-        const result:
-          Conversation[] =
-          await Promise.all(
+          if (
+            memberships.length ===
+            0
+          ) {
+            setConversations(
+              []
+            );
+            return;
+          }
+
+          const conversationIds =
+            memberships.map(
+              (item) =>
+                item.conversation_id
+            );
+
+          const {
+            data:
+              conversationData,
+            error:
+              conversationError,
+          } =
+            await supabase
+              .from(
+                'conversations'
+              )
+              .select(`
+                id,
+                author_id,
+                participant_id,
+                conversation_type,
+                title,
+                created_by,
+                is_request,
+                created_at
+              `)
+              .in(
+                'id',
+                conversationIds
+              );
+
+          if (
+            conversationError
+          ) {
+            console.error(
+              'INBOX CONVERSATIONS ERROR:',
+              conversationError
+            );
+            return;
+          }
+
+          const rawConversations =
+            (
+              conversationData ??
+              []
+            ) as ConversationRow[];
+
+          const {
+            data:
+              allMembersData,
+            error:
+              allMembersError,
+          } =
+            await supabase
+              .from(
+                'conversation_members'
+              )
+              .select(`
+                conversation_id,
+                user_id,
+                last_read_at
+              `)
+              .in(
+                'conversation_id',
+                conversationIds
+              )
+              .is(
+                'left_at',
+                null
+              );
+
+          if (
+            allMembersError
+          ) {
+            console.error(
+              'INBOX ALL MEMBERS ERROR:',
+              allMembersError
+            );
+          }
+
+          const allMembers =
+            (
+              allMembersData ??
+              []
+            ) as Member[];
+
+          const otherUserIds =
+            [
+              ...new Set(
+                allMembers
+                  .filter(
+                    (member) =>
+                      member.user_id !==
+                      user.id
+                  )
+                  .map(
+                    (member) =>
+                      member.user_id
+                  )
+              ),
+            ];
+
+          let profiles:
+            Profile[] = [];
+
+          if (
+            otherUserIds.length >
+            0
+          ) {
+            const {
+              data,
+              error,
+            } =
+              await supabase
+                .from(
+                  'profiles'
+                )
+                .select(`
+                  id,
+                  username,
+                  display_name,
+                  avatar_url
+                `)
+                .in(
+                  'id',
+                  otherUserIds
+                );
+
+            if (error) {
+              console.error(
+                'INBOX PROFILES ERROR:',
+                error
+              );
+            } else {
+              profiles =
+                (
+                  data ??
+                  []
+                ) as Profile[];
+            }
+          }
+
+          const {
+            data:
+              messageData,
+            error:
+              messageError,
+          } =
+            await supabase
+              .from(
+                'messages'
+              )
+              .select(`
+                id,
+                conversation_id,
+                sender_id,
+                text,
+                message_type,
+                created_at
+              `)
+              .in(
+                'conversation_id',
+                conversationIds
+              )
+              .is(
+                'deleted_for_everyone_at',
+                null
+              )
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              );
+
+          if (
+            messageError
+          ) {
+            console.error(
+              'INBOX MESSAGES ERROR:',
+              messageError
+            );
+          }
+
+          const messages =
+            (
+              messageData ??
+              []
+            ) as MessageRow[];
+
+          const messageIds =
+            messages.map(
+              (message) =>
+                message.id
+            );
+
+          let hiddenMessageIds =
+            new Set<string>();
+
+          if (
+            messageIds.length >
+            0
+          ) {
+            const {
+              data:
+                hiddenData,
+              error:
+                hiddenError,
+            } =
+              await supabase
+                .from(
+                  'message_hidden_for'
+                )
+                .select(
+                  'message_id'
+                )
+                .eq(
+                  'user_id',
+                  user.id
+                )
+                .in(
+                  'message_id',
+                  messageIds
+                );
+
+            if (
+              hiddenError
+            ) {
+              console.error(
+                'INBOX HIDDEN MESSAGES ERROR:',
+                hiddenError
+              );
+            } else {
+              hiddenMessageIds =
+                new Set(
+                  (
+                    hiddenData ??
+                    []
+                  ).map(
+                    (row) =>
+                      row.message_id as string
+                  )
+                );
+            }
+          }
+
+          const visibleMessages =
+            messages.filter(
+              (message) =>
+                !hiddenMessageIds.has(
+                  message.id
+                )
+            );
+
+          const {
+            data:
+              eventData,
+            error:
+              eventError,
+          } =
+            await supabase
+              .from(
+                'conversation_events'
+              )
+              .select(`
+                conversation_id,
+                event_type,
+                drop_text_snapshot,
+                created_at
+              `)
+              .in(
+                'conversation_id',
+                conversationIds
+              )
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              );
+
+          if (
+            eventError
+          ) {
+            console.error(
+              'INBOX EVENTS ERROR:',
+              eventError
+            );
+          }
+
+          const events =
+            (
+              eventData ??
+              []
+            ) as EventRow[];
+
+          const next =
             rawConversations.map(
-              async (
+              (
                 conversation
               ) => {
-                const otherUserId =
-                  conversation.author_id ===
-                  user.id
-                    ? conversation.participant_id
-                    : conversation.author_id;
-
-                const profile =
-                  profiles.find(
+                const myMembership =
+                  memberships.find(
                     (item) =>
-                      item.id ===
-                      otherUserId
-                  );
-
-                const {
-                  data:
-                    lastMessageData,
-                  error:
-                    lastMessageError,
-                } =
-                  await supabase
-                    .from(
-                      'messages'
-                    )
-                    .select(`
-                      text,
-                      created_at
-                    `)
-                    .eq(
-                      'conversation_id',
+                      item.conversation_id ===
                       conversation.id
-                    )
-                    .order(
-                      'created_at',
-                      {
-                        ascending:
-                          false,
-                      }
-                    )
-                    .limit(1)
-                    .maybeSingle();
-
-                if (
-                  lastMessageError
-                ) {
-                  console.error(
-                    'INBOX LAST MESSAGE ERROR:',
-                    lastMessageError
                   );
-                }
 
-                const {
-                  data:
-                    lastEventData,
-                  error:
-                    lastEventError,
-                } =
-                  await supabase
-                    .from(
-                      'conversation_events'
-                    )
-                    .select(`
-                      event_type,
-                      actor_id,
-                      drop_text_snapshot,
-                      created_at
-                    `)
-                    .eq(
-                      'conversation_id',
+                const members =
+                  allMembers.filter(
+                    (item) =>
+                      item.conversation_id ===
                       conversation.id
-                    )
-                    .order(
-                      'created_at',
-                      {
-                        ascending:
-                          false,
-                      }
-                    )
-                    .limit(1)
-                    .maybeSingle();
-
-                if (
-                  lastEventError
-                ) {
-                  console.error(
-                    'INBOX LAST EVENT ERROR:',
-                    lastEventError
                   );
-                }
+
+                const others =
+                  members.filter(
+                    (member) =>
+                      member.user_id !==
+                      user.id
+                  );
+
+                const otherProfiles =
+                  others
+                    .map(
+                      (member) =>
+                        profiles.find(
+                          (profile) =>
+                            profile.id ===
+                            member.user_id
+                        )
+                    )
+                    .filter(
+                      (
+                        profile
+                      ): profile is Profile =>
+                        !!profile
+                    );
 
                 const lastMessage =
-                  lastMessageData ??
+                  visibleMessages.find(
+                    (message) =>
+                      message.conversation_id ===
+                      conversation.id
+                  ) ??
                   null;
 
                 const lastEvent =
-                  lastEventData ??
+                  events.find(
+                    (event) =>
+                      event.conversation_id ===
+                      conversation.id
+                  ) ??
                   null;
 
-                let lastActivityAt =
-                  conversation.created_at;
+                const messageTime =
+                  lastMessage
+                    ? new Date(
+                        lastMessage.created_at
+                      ).getTime()
+                    : 0;
+
+                const eventTime =
+                  lastEvent
+                    ? new Date(
+                        lastEvent.created_at
+                      ).getTime()
+                    : 0;
+
+                const lastActivityAt =
+                  messageTime >=
+                  eventTime
+                    ? lastMessage
+                        ?.created_at ??
+                      conversation.created_at
+                    : lastEvent
+                        ?.created_at ??
+                      conversation.created_at;
+
+                let preview =
+                  'Start a conversation';
 
                 if (
-                  lastMessage &&
-                  new Date(
-                    lastMessage.created_at
-                  ).getTime() >
-                    new Date(
-                      lastActivityAt
-                    ).getTime()
+                  messageTime >=
+                    eventTime &&
+                  lastMessage
                 ) {
-                  lastActivityAt =
-                    lastMessage.created_at;
+                  preview =
+                    messagePreview(
+                      lastMessage
+                    ) ??
+                    preview;
+                } else if (
+                  lastEvent
+                ) {
+                  preview =
+                    lastEvent.event_type ===
+                    'join'
+                      ? 'Joined a Drop'
+                      : 'Replied to a Drop';
                 }
 
-                if (
-                  lastEvent &&
-                  new Date(
-                    lastEvent.created_at
-                  ).getTime() >
+                const lastReadAt =
+                  myMembership
+                    ?.last_read_at;
+
+                const unread =
+                  !!lastMessage &&
+                  lastMessage.sender_id !==
+                    user.id &&
+                  (
+                    !lastReadAt ||
                     new Date(
-                      lastActivityAt
-                    ).getTime()
+                      lastMessage.created_at
+                    ).getTime() >
+                      new Date(
+                        lastReadAt
+                      ).getTime()
+                  );
+
+                if (
+                  conversation.conversation_type ===
+                  'group'
                 ) {
-                  lastActivityAt =
-                    lastEvent.created_at;
+                  return {
+                    id:
+                      conversation.id,
+                    conversationType:
+                      'group' as const,
+                    title:
+                      conversation.title?.trim() ||
+                      otherProfiles
+                        .slice(
+                          0,
+                          3
+                        )
+                        .map(
+                          (profile) =>
+                            profile.display_name ||
+                            profile.username ||
+                            'User'
+                        )
+                        .join(
+                          ', '
+                        ) ||
+                      'Group',
+                    avatarUrl:
+                      null,
+                    preview,
+                    lastActivityAt,
+                    unread,
+                    isRequest:
+                      conversation.is_request,
+                  };
                 }
+
+                const other =
+                  otherProfiles[0];
 
                 return {
                   id:
                     conversation.id,
-
-                  author_id:
-                    conversation.author_id,
-
-                  participant_id:
-                    conversation.participant_id,
-
-                  created_at:
-                    conversation.created_at,
-
-                  otherUser:
-                    profile
-                      ? {
-                          username:
-                            profile.username,
-
-                          display_name:
-                            profile.display_name,
-
-                          avatar_url:
-                            profile.avatar_url,
-                        }
-                      : null,
-
-                  lastMessage,
-
-                  lastEvent,
-
+                  conversationType:
+                    'direct' as const,
+                  title:
+                    other?.display_name ||
+                    other?.username ||
+                    'Unnamed user',
+                  avatarUrl:
+                    other?.avatar_url ??
+                    null,
+                  preview,
                   lastActivityAt,
+                  unread,
+                  isRequest:
+                    conversation.is_request &&
+                    conversation.created_by !==
+                      user.id,
                 };
               }
-            )
+            );
+
+          next.sort(
+            (a, b) =>
+              new Date(
+                b.lastActivityAt
+              ).getTime() -
+              new Date(
+                a.lastActivityAt
+              ).getTime()
           );
 
-        /*
-         * NEWEST ACTIVITY FIRST
-         */
-
-        result.sort(
-          (a, b) =>
-            new Date(
-              b.lastActivityAt
-            ).getTime() -
-            new Date(
-              a.lastActivityAt
-            ).getTime()
-        );
-
-        setConversations(
-          result
-        );
-      } catch (error) {
-        console.error(
-          'INBOX LOAD ERROR:',
-          error
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+          setConversations(
+            next
+          );
+        } finally {
+          setLoading(
+            false
+          );
+        }
+      },
+      []
+    );
 
   useFocusEffect(
-    useCallback(() => {
-      loadConversations();
-    }, [])
+    useCallback(
+      () => {
+        loadConversations();
+      },
+      [
+        loadConversations,
+      ]
+    )
   );
 
-  if (loading) {
-    return (
-      <View
-        style={
-          styles.loadingContainer
-        }
-      >
-        <ActivityIndicator />
-      </View>
+  const visible =
+    conversations.filter(
+      (conversation) =>
+        mode ===
+        'requests'
+          ? conversation.isRequest
+          : !conversation.isRequest
     );
-  }
 
   return (
     <View
@@ -467,12 +805,98 @@ export default function InboxScreen() {
             styles.title
           }
         >
-          Inbox
+          Messages
         </Text>
       </View>
 
-      {conversations.length ===
-      0 ? (
+      <View
+        style={
+          styles.modeRow
+        }
+      >
+        <Pressable
+          style={
+            styles.modeButton
+          }
+          onPress={() =>
+            setMode(
+              'messages'
+            )
+          }
+        >
+          <Text
+            style={[
+              styles.modeText,
+              mode ===
+                'messages' &&
+                styles.modeTextActive,
+            ]}
+          >
+            Messages
+          </Text>
+
+          <View
+            style={[
+              styles.modeLine,
+              mode ===
+                'messages' &&
+                styles.modeLineActive,
+            ]}
+          />
+        </Pressable>
+
+        <View
+          style={
+            styles.modeDivider
+          }
+        />
+
+        <Pressable
+          style={
+            styles.modeButton
+          }
+          onPress={() =>
+            setMode(
+              'requests'
+            )
+          }
+        >
+          <Text
+            style={[
+              styles.modeText,
+              mode ===
+                'requests' &&
+                styles.modeTextActive,
+            ]}
+          >
+            Requests
+          </Text>
+
+          <View
+            style={[
+              styles.modeLine,
+              mode ===
+                'requests' &&
+                styles.modeLineActive,
+            ]}
+          />
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <ActivityIndicator
+            color={
+              DropColors.warmWhite
+            }
+          />
+        </View>
+      ) : visible.length ===
+        0 ? (
         <View
           style={
             styles.emptyContainer
@@ -483,7 +907,10 @@ export default function InboxScreen() {
               styles.emptyTitle
             }
           >
-            No conversations yet.
+            {mode ===
+            'messages'
+              ? 'No messages yet.'
+              : 'No requests.'}
           </Text>
 
           <Text
@@ -491,139 +918,113 @@ export default function InboxScreen() {
               styles.emptySubtitle
             }
           >
-            Reply to a Drop, Join someone,
-            or start a conversation.
+            {mode ===
+            'messages'
+              ? 'Start a conversation or reply to a Drop.'
+              : 'New message requests will appear here.'}
           </Text>
         </View>
       ) : (
-        <ScrollView>
-          {conversations.map(
+        <ScrollView
+          contentContainerStyle={
+            styles.listContent
+          }
+          showsVerticalScrollIndicator={
+            false
+          }
+        >
+          {visible.map(
             (
               conversation
-            ) => {
-              const name =
-                conversation
-                  .otherUser
-                  ?.display_name ||
-                'Unnamed user';
-
-              const username =
-                conversation
-                  .otherUser
-                  ?.username;
-
-              const lastMessage =
-                conversation.lastMessage;
-
-              const lastEvent =
-                conversation.lastEvent;
-
-              const messageTime =
-                lastMessage
-                  ? new Date(
-                      lastMessage.created_at
-                    ).getTime()
-                  : 0;
-
-              const eventTime =
-                lastEvent
-                  ? new Date(
-                      lastEvent.created_at
-                    ).getTime()
-                  : 0;
-
-              const lastItemIsEvent =
-                eventTime >
-                messageTime;
-
-              let preview =
-                'Start a conversation';
-
-              if (
-                lastItemIsEvent &&
-                lastEvent
-              ) {
-                const actorIsMe =
-                  lastEvent.actor_id ===
-                  conversation.author_id ||
-                  lastEvent.actor_id ===
-                  conversation.participant_id
-                    ? false
-                    : false;
-
-                /*
-                 * Inbox не обязан писать имя автора события.
-                 * Нам важнее коротко показать действие.
-                 */
-
-                preview =
-                  lastEvent.event_type ===
-                  'join'
-                    ? 'Joined a Drop'
-                    : 'Replied to a Drop';
-              } else if (
-                lastMessage
-              ) {
-                preview =
-                  lastMessage.text;
-              }
-
-              return (
-                <TouchableOpacity
-                  key={
-                    conversation.id
-                  }
+            ) => (
+              <Pressable
+                key={
+                  conversation.id
+                }
+                style={({ pressed }) => [
+                  styles.conversation,
+                  pressed &&
+                    styles.conversationPressed,
+                ]}
+                onPress={() =>
+                  router.push(
+                    `/chat/${conversation.id}`
+                  )
+                }
+              >
+                <View
                   style={
-                    styles.conversation
-                  }
-                  onPress={() =>
-                    router.push(
-                      `/chat/${conversation.id}`
-                    )
+                    styles.avatar
                   }
                 >
-                  <View style={styles.avatar}>
-                    <UserAvatar
-                      uri={conversation.otherUser?.avatar_url}
-                      name={name}
-                      size={48}
-                    />
-                  </View>
-
-                  <View
-                    style={
-                      styles.conversationContent
-                    }
-                  >
+                  {conversation.conversationType ===
+                  'group' ? (
                     <View
                       style={
-                        styles.topRow
+                        styles.groupAvatar
                       }
                     >
-                      <View
+                      <Text
                         style={
-                          styles.nameRow
+                          styles.groupAvatarText
                         }
                       >
-                        <Text
-                          style={
-                            styles.name
-                          }
-                        >
-                          {name}
-                        </Text>
+                        {
+                          conversation.title
+                            .trim()
+                            .slice(
+                              0,
+                              1
+                            )
+                            .toUpperCase()
+                        }
+                      </Text>
+                    </View>
+                  ) : (
+                    <UserAvatar
+                      uri={
+                        conversation.avatarUrl
+                      }
+                      name={
+                        conversation.title
+                      }
+                      size={
+                        46
+                      }
+                    />
+                  )}
+                </View>
 
-                        {!!username && (
-                          <Text
-                            style={
-                              styles.username
-                            }
-                          >
-                            @{username}
-                          </Text>
-                        )}
-                      </View>
+                <View
+                  style={
+                    styles.conversationContent
+                  }
+                >
+                  <View
+                    style={
+                      styles.topRow
+                    }
+                  >
+                    <Text
+                      numberOfLines={
+                        1
+                      }
+                      style={[
+                        styles.name,
+                        conversation.unread &&
+                          styles.nameUnread,
+                      ]}
+                    >
+                      {
+                        conversation.title
+                      }
+                    </Text>
 
+                    <View
+                      style={
+                        styles.rightMeta
+                      }
+                    >
                       <Text
                         style={
                           styles.time
@@ -633,25 +1034,61 @@ export default function InboxScreen() {
                           conversation.lastActivityAt
                         )}
                       </Text>
-                    </View>
 
-                    <Text
-                      style={
-                        lastItemIsEvent
-                          ? styles.eventPreview
-                          : styles.preview
-                      }
-                      numberOfLines={1}
-                    >
-                      {preview}
-                    </Text>
+                      {conversation.unread && (
+                        <View
+                          style={
+                            styles.unreadDot
+                          }
+                        />
+                      )}
+                    </View>
                   </View>
-                </TouchableOpacity>
-              );
-            }
+
+                  <Text
+                    style={[
+                      styles.preview,
+                      conversation.unread &&
+                        styles.previewUnread,
+                    ]}
+                    numberOfLines={
+                      1
+                    }
+                  >
+                    {
+                      conversation.preview
+                    }
+                  </Text>
+                </View>
+              </Pressable>
+            )
           )}
         </ScrollView>
       )}
+
+      <Pressable
+        onPress={() =>
+          router.push(
+            '/new-message'
+          )
+        }
+        hitSlop={
+          8
+        }
+        style={({ pressed }) => [
+          styles.floatingCreateButton,
+          pressed &&
+            styles.floatingCreateButtonPressed,
+        ]}
+      >
+        <Text
+          style={
+            styles.floatingCreateText
+          }
+        >
+          +
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -661,84 +1098,132 @@ const styles =
     container: {
       flex: 1,
       backgroundColor:
-        '#000000',
+        DropColors.graphite,
+    },
+
+    header: {
+      paddingTop: 52,
+      paddingHorizontal: 18,
+      paddingBottom: 13,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+      borderBottomColor:
+        DropColors.border,
+    },
+
+    title: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.semibold,
+      fontSize: 25,
+    },
+
+    modeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+      borderBottomColor:
+        DropColors.border,
+    },
+
+    modeButton: {
+      minWidth: 82,
+      paddingTop: 13,
+      alignItems: 'center',
+    },
+
+    modeText: {
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
+    },
+
+    modeTextActive: {
+      color:
+        DropColors.warmWhite,
+    },
+
+    modeLine: {
+      width: '100%',
+      height: 1,
+      marginTop: 11,
+      backgroundColor:
+        'transparent',
+    },
+
+    modeLineActive: {
+      backgroundColor:
+        DropColors.wine,
+    },
+
+    modeDivider: {
+      width:
+        StyleSheet.hairlineWidth,
+      height: 17,
+      marginHorizontal: 16,
+      backgroundColor:
+        DropColors.border,
     },
 
     loadingContainer: {
       flex: 1,
-      backgroundColor:
-        '#000000',
-      alignItems:
-        'center',
+      alignItems: 'center',
       justifyContent:
         'center',
     },
 
-    header: {
-      paddingTop: 56,
-      paddingHorizontal: 20,
-      paddingBottom: 14,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
-    },
-
-    title: {
-      color: '#FFFFFF',
-      fontSize: 28,
-      fontWeight: '700',
-    },
-
-    emptyContainer: {
-      flex: 1,
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-      paddingHorizontal: 40,
-    },
-
-    emptyTitle: {
-      color: '#FFFFFF',
-      fontSize: 17,
-      fontWeight: '600',
-    },
-
-    emptySubtitle: {
-      color: '#666666',
-      fontSize: 14,
-      lineHeight: 19,
-      textAlign: 'center',
-      marginTop: 8,
+    listContent: {
+      paddingBottom: 88,
     },
 
     conversation: {
+      minHeight: 72,
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+      borderBottomColor:
+        DropColors.border,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
+    },
+
+    conversationPressed: {
+      opacity: 0.62,
     },
 
     avatar: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor:
-        '#222222',
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-      marginRight: 14,
+      width: 46,
+      height: 46,
+      marginRight: 12,
     },
 
-    avatarText: {
-      color: '#FFFFFF',
+    groupAvatar: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        DropColors.surface,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+    },
+
+    groupAvatarText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.semibold,
       fontSize: 17,
-      fontWeight: '600',
     },
 
     conversationContent: {
@@ -747,44 +1232,132 @@ const styles =
 
     topRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       justifyContent:
         'space-between',
-      alignItems: 'center',
       gap: 10,
     },
 
-    nameRow: {
+    name: {
+      flex: 1,
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 14,
+    },
+
+    nameUnread: {
+      fontFamily:
+        DropTypography.semibold,
+    },
+
+    rightMeta: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      flexShrink: 1,
-    },
-
-    name: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-
-    username: {
-      color: '#555555',
-      fontSize: 13,
     },
 
     time: {
-      color: '#444444',
-      fontSize: 12,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
+    },
+
+    unreadDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor:
+        DropColors.wine,
     },
 
     preview: {
-      color: '#AAAAAA',
-      fontSize: 14,
-      marginTop: 5,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 12,
+      marginTop: 4,
     },
 
-    eventPreview: {
-      color: '#666666',
-      fontSize: 14,
-      marginTop: 5,
+    previewUnread: {
+      color:
+        DropColors.textSecondary,
+    },
+
+    emptyContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      paddingHorizontal: 40,
+      paddingBottom: 50,
+    },
+
+    emptyTitle: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 16,
+    },
+
+    emptySubtitle: {
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: 'center',
+      marginTop: 7,
+    },
+
+    floatingCreateButton: {
+      position: 'absolute',
+      right: 18,
+      bottom: 18,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor:
+        DropColors.wine,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      zIndex: 20,
+      elevation: 6,
+    },
+
+    floatingCreateButtonPressed: {
+      opacity: 0.72,
+      transform: [
+        {
+          scale: 0.97,
+        },
+      ],
+    },
+
+    floatingCreateText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.light,
+      fontSize: 44,
+      lineHeight: 42,
+      textAlign: 'center',
+      includeFontPadding: false,
+      transform: [
+        {
+          translateY: 6,
+        },
+      ],
     },
   });
