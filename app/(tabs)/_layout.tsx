@@ -603,46 +603,70 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="index"
+      initialRouteName="explore"
       screenOptions={{
-        tabBarActiveTintColor:
-          Colors[
-            colorScheme ??
-              'light'
-          ].tint,
-
         headerShown:
           false,
 
         tabBarButton:
           HapticTab,
 
-        tabBarStyle: {
-          backgroundColor:
-            '#000000',
-
-          borderTopColor:
-            '#1A1A1A',
-        },
+        tabBarActiveTintColor:
+          Colors[
+            colorScheme ??
+              'light'
+          ].tabIconSelected,
 
         tabBarInactiveTintColor:
-          '#666666',
+          Colors[
+            colorScheme ??
+              'light'
+          ].tabIconDefault,
+
+        tabBarStyle: {
+          backgroundColor:
+            Colors[
+              colorScheme ??
+                'light'
+            ].background,
+
+          borderTopColor:
+            '#444444',
+
+          borderTopWidth:
+            0.5,
+        },
+
+        tabBarLabelStyle: {
+          fontFamily:
+            'FiraSans_400Regular',
+
+          fontSize:
+            11,
+        },
 
         tabBarBadgeStyle: {
           backgroundColor:
-            '#FFFFFF',
+            '#7D0D0D',
 
           color:
-            '#000000',
+            '#FFF2E4',
+
+          fontFamily:
+            'FiraSans_600SemiBold',
 
           fontSize:
             10,
-
-          fontWeight:
-            '700',
         },
       }}
     >
+      {/*
+       * EXPLORE
+       *
+       * Main discovery surface.
+       * Find/Search will be moved
+       * inside Explore.
+       */}
       <Tabs.Screen
         name="explore"
         options={{
@@ -663,26 +687,24 @@ export default function TabLayout() {
         }}
       />
 
+      {/*
+       * FIND
+       *
+       * Keep the route alive,
+       * but remove it from navbar.
+       * Later it becomes part
+       * of Explore.
+       */}
       <Tabs.Screen
         name="find"
         options={{
-          title:
-            'Find',
-
-          tabBarIcon: ({
-            color,
-          }) => (
-            <IconSymbol
-              size={24}
-              name="magnifyingglass"
-              color={
-                color
-              }
-            />
-          ),
+          href: null,
         }}
       />
 
+      {/*
+       * DROPS
+       */}
       <Tabs.Screen
         name="index"
         options={{
@@ -703,11 +725,17 @@ export default function TabLayout() {
         }}
       />
 
+      {/*
+       * MESSAGES
+       *
+       * Existing inbox route,
+       * new user-facing name.
+       */}
       <Tabs.Screen
         name="inbox"
         options={{
           title:
-            'Inbox',
+            'Messages',
 
           tabBarBadge:
             unreadCount >
@@ -732,35 +760,26 @@ export default function TabLayout() {
         }}
       />
 
+      {/*
+       * ACTIVITY
+       *
+       * Route stays alive.
+       * It no longer occupies
+       * a navbar position.
+       *
+       * Next step:
+       * Drops -> bell -> Activity.
+       */}
       <Tabs.Screen
         name="activity"
         options={{
-          title:
-            'Activity',
-
-          tabBarBadge:
-            activityUnreadCount >
-            0
-              ? activityUnreadCount >
-                9
-                ? '9+'
-                : activityUnreadCount
-              : undefined,
-
-          tabBarIcon: ({
-            color,
-          }) => (
-            <IconSymbol
-              size={24}
-              name="bell.fill"
-              color={
-                color
-              }
-            />
-          ),
+          href: null,
         }}
       />
 
+      {/*
+       * PROFILE
+       */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -781,6 +800,12 @@ export default function TabLayout() {
         }}
       />
 
+      {/*
+       * CREATE DROP
+       *
+       * Action route,
+       * never a navbar destination.
+       */}
       <Tabs.Screen
         name="create"
         options={{

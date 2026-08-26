@@ -3,6 +3,15 @@ import type {
 } from '@supabase/supabase-js';
 
 import {
+  FiraSans_300Light,
+  FiraSans_400Regular,
+  FiraSans_500Medium,
+  FiraSans_600SemiBold,
+  FiraSans_700Bold,
+  useFonts,
+} from '@expo-google-fonts/fira-sans';
+
+import {
   Stack,
 } from 'expo-router';
 
@@ -21,6 +30,17 @@ import {
 } from '@/lib/supabase';
 
 export default function RootLayout() {
+  const [
+    fontsLoaded,
+  ] =
+    useFonts({
+      FiraSans_300Light,
+      FiraSans_400Regular,
+      FiraSans_500Medium,
+      FiraSans_600SemiBold,
+      FiraSans_700Bold,
+    });
+
   const [
     session,
     setSession,
@@ -52,117 +72,117 @@ export default function RootLayout() {
     useState(true);
 
   const checkProfile =
-  useCallback(
-    async (
-      currentSession:
-        Session | null
-    ) => {
-      if (!currentSession) {
-        setHasProfile(
-          null
-        );
+    useCallback(
+      async (
+        currentSession:
+          Session | null
+      ) => {
+        if (!currentSession) {
+          setHasProfile(
+            null
+          );
 
-        setOnboardingCompleted(
-          null
-        );
+          setOnboardingCompleted(
+            null
+          );
 
-        setLoading(
-          false
-        );
+          setLoading(
+            false
+          );
 
-        return;
-      }
+          return;
+        }
 
-      const loadProfile =
-        async () => {
-          return await supabase
-            .from(
-              'profiles'
-            )
-            .select(`
-              id,
-              onboarding_completed
-            `)
-            .eq(
-              'id',
-              currentSession
-                .user.id
-            )
-            .maybeSingle();
-        };
+        const loadProfile =
+          async () => {
+            return await supabase
+              .from(
+                'profiles'
+              )
+              .select(`
+                id,
+                onboarding_completed
+              `)
+              .eq(
+                'id',
+                currentSession
+                  .user.id
+              )
+              .maybeSingle();
+          };
 
-      let {
-        data,
-        error,
-      } =
-        await loadProfile();
-
-      if (
-        error?.code ===
-          'PGRST303' &&
-        error.message
-          ?.toLowerCase()
-          .includes(
-            'jwt issued at future'
-          )
-      ) {
-        await new Promise(
-          (resolve) =>
-            setTimeout(
-              resolve,
-              1200
-            )
-        );
-
-        const retryResult =
+        let {
+          data,
+          error,
+        } =
           await loadProfile();
 
-        data =
-          retryResult.data;
+        if (
+          error?.code ===
+            'PGRST303' &&
+          error.message
+            ?.toLowerCase()
+            .includes(
+              'jwt issued at future'
+            )
+        ) {
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                1200
+              )
+          );
 
-        error =
-          retryResult.error;
-      }
+          const retryResult =
+            await loadProfile();
 
-      if (error) {
-        console.error(
-          'PROFILE CHECK ERROR:',
-          error
-        );
+          data =
+            retryResult.data;
+
+          error =
+            retryResult.error;
+        }
+
+        if (error) {
+          console.error(
+            'PROFILE CHECK ERROR:',
+            error
+          );
+
+          setHasProfile(
+            false
+          );
+
+          setOnboardingCompleted(
+            null
+          );
+
+          setLoading(
+            false
+          );
+
+          return;
+        }
 
         setHasProfile(
-          false
+          !!data
         );
 
         setOnboardingCompleted(
-          null
+          data
+            ? data
+                .onboarding_completed ===
+              true
+            : null
         );
 
         setLoading(
           false
         );
-
-        return;
-      }
-
-      setHasProfile(
-        !!data
-      );
-
-      setOnboardingCompleted(
-        data
-          ? data
-              .onboarding_completed ===
-            true
-          : null
-      );
-
-      setLoading(
-        false
-      );
-    },
-    []
-  );
+      },
+      []
+    );
 
   const refreshProfileGate =
     useCallback(
@@ -233,7 +253,10 @@ export default function RootLayout() {
     checkProfile,
   ]);
 
-  if (loading) {
+  if (
+    loading ||
+    !fontsLoaded
+  ) {
     return null;
   }
 

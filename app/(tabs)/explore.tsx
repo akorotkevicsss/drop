@@ -20,7 +20,13 @@ import {
   View,
 } from 'react-native';
 
+import { ExplorePeopleSearch } from '@/components/explore-people-search';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
+import {
+  DropColors,
+  DropTypography,
+} from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 type DropAuthor = {
@@ -145,6 +151,13 @@ function formatJoinTimer(
 }
 
 export default function ExploreScreen() {
+  const [
+    mode,
+    setMode,
+  ] = useState<
+    'feed' | 'search' | 'map'
+  >('feed');
+
   const [drops, setDrops] =
     useState<Drop[]>([]);
 
@@ -1326,52 +1339,95 @@ export default function ExploreScreen() {
 
   if (loading) {
     return (
-      <View
-        style={
-          styles.loadingContainer
-        }
-      >
+      <View style={styles.loadingContainer}>
         <ActivityIndicator />
       </View>
     );
   }
 
   return (
-    <View
-      style={
-        styles.container
-      }
-    >
-      <View
-        style={
-          styles.header
-        }
-      >
-        <View>
-          <Text
-            style={
-              styles.exploreTitle
-            }
-          >
-            Explore
-          </Text>
+    <View style={styles.container}>
+      <View style={styles.exploreHeader}>
+        <View style={styles.exploreTitleRow}>
+          <View style={styles.exploreTitleBlock}>
+            <Text style={styles.exploreTitle}>
+              Explore
+            </Text>
 
-          <Text
-            style={
-              styles.feedLabel
-            }
+            <Text style={styles.exploreSubtitle}>
+              Discover people and Drops around you.
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={() => setMode('search')}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.searchButton,
+              mode === 'search' && styles.searchButtonActive,
+              pressed && styles.searchButtonPressed,
+            ]}
           >
-            DISCOVER
-          </Text>
+            <IconSymbol
+              name="magnifyingglass"
+              size={19}
+              color={
+                mode === 'search'
+                  ? DropColors.warmWhite
+                  : DropColors.textSecondary
+              }
+            />
+          </Pressable>
         </View>
 
-        <View
-          style={
-            styles.headerRightSpacer
-          }
-        />
+        {mode !== 'search' && (
+          <View style={styles.exploreTabs}>
+            <Pressable
+              onPress={() => setMode('feed')}
+              style={styles.exploreTab}
+            >
+              <Text
+                style={[
+                  styles.exploreTabText,
+                  mode === 'feed' && styles.exploreTabTextActive,
+                ]}
+              >
+                Feed
+              </Text>
+              <View
+                style={[
+                  styles.exploreTabLine,
+                  mode === 'feed' && styles.exploreTabLineActive,
+                ]}
+              />
+            </Pressable>
+
+            <View style={styles.exploreTabDivider} />
+
+            <Pressable
+              onPress={() => setMode('map')}
+              style={styles.exploreTab}
+            >
+              <Text
+                style={[
+                  styles.exploreTabText,
+                  mode === 'map' && styles.exploreTabTextActive,
+                ]}
+              >
+                Map
+              </Text>
+              <View
+                style={[
+                  styles.exploreTabLine,
+                  mode === 'map' && styles.exploreTabLineActive,
+                ]}
+              />
+            </Pressable>
+          </View>
+        )}
       </View>
 
+      {mode === 'feed' && (
       <ScrollView
         refreshControl={
           <RefreshControl
@@ -1383,7 +1439,7 @@ export default function ExploreScreen() {
                 true
               )
             }
-            tintColor="#FFFFFF"
+            tintColor={DropColors.wine}
           />
         }
       >
@@ -1411,21 +1467,15 @@ export default function ExploreScreen() {
             </Text>
 
             <Pressable
-              style={
-                styles.emptyFindButton
-              }
-              onPress={() =>
-                router.push(
-                  '/find'
-                )
-              }
+              onPress={() => setMode('search')}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.emptyFindLink,
+                pressed && styles.emptyFindLinkPressed,
+              ]}
             >
-              <Text
-                style={
-                  styles.emptyFindText
-                }
-              >
-                Find people
+              <Text style={styles.emptyFindText}>
+                Find people  →
               </Text>
             </Pressable>
           </View>
@@ -1787,6 +1837,20 @@ export default function ExploreScreen() {
           )
         )}
       </ScrollView>
+      )}
+
+      {mode === 'search' && (
+        <ExplorePeopleSearch />
+      )}
+
+      {mode === 'map' && (
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapPlaceholderTitle}>Map</Text>
+          <Text style={styles.mapPlaceholderText}>
+            Nearby Drops will appear here.
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1796,13 +1860,13 @@ const styles =
     container: {
       flex: 1,
       backgroundColor:
-        '#000000',
+        DropColors.graphite,
     },
 
     loadingContainer: {
       flex: 1,
       backgroundColor:
-        '#000000',
+        DropColors.graphite,
       alignItems:
         'center',
       justifyContent:
@@ -1815,7 +1879,7 @@ const styles =
       paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor:
-        '#1A1A1A',
+        DropColors.border,
       flexDirection:
         'row',
       justifyContent:
@@ -1825,20 +1889,114 @@ const styles =
     },
 
     logo: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
       fontSize: 22,
       fontWeight: '700',
       letterSpacing: 3,
     },
 
+    exploreHeader: {
+      paddingTop: 54,
+      paddingHorizontal: 18,
+      paddingBottom: 0,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+
+    exploreTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
+
+    exploreTitleBlock: {
+      flex: 1,
+      paddingRight: 16,
+    },
+
     exploreTitle: {
-      color: '#FFFFFF',
-      fontSize: 28,
-      fontWeight: '700',
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.light,
+      fontSize: 30,
+      letterSpacing: 0.2,
+    },
+
+    exploreSubtitle: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 12,
+      marginTop: 3,
+    },
+
+    searchButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: DropColors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 1,
+    },
+
+    searchButtonActive: {
+      backgroundColor: DropColors.wine,
+      borderColor: DropColors.wine,
+    },
+
+    searchButtonPressed: {
+      opacity: 0.6,
+    },
+
+    exploreTabs: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      marginTop: 22,
+    },
+
+    exploreTab: {
+      flex: 1,
+      minHeight: 42,
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      paddingBottom: 11,
+    },
+
+    exploreTabText: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 14,
+    },
+
+    exploreTabTextActive: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+    },
+
+    exploreTabLine: {
+      position: 'absolute',
+      left: 18,
+      right: 18,
+      bottom: 0,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: 'transparent',
+    },
+
+    exploreTabLineActive: {
+      height: 1,
+      backgroundColor: DropColors.wine,
+    },
+
+    exploreTabDivider: {
+      width: StyleSheet.hairlineWidth,
+      height: 20,
+      alignSelf: 'center',
+      marginBottom: 10,
+      backgroundColor: DropColors.border,
     },
 
     feedLabel: {
-      color: '#555555',
+      color: DropColors.textMuted,
       fontSize: 9,
       fontWeight: '700',
       letterSpacing: 1.4,
@@ -1851,17 +2009,23 @@ const styles =
     },
 
     headerButton: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
       fontSize: 28,
       fontWeight: '300',
     },
 
     drop: {
-      paddingHorizontal: 20,
-      paddingVertical: 22,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
+      marginHorizontal: 16,
+      marginTop: 14,
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      borderRadius: 18,
+      backgroundColor:
+        DropColors.surface,
     },
 
     userRow: {
@@ -1876,7 +2040,7 @@ const styles =
       height: 42,
       borderRadius: 21,
       backgroundColor:
-        '#222222',
+        DropColors.surface,
       alignItems:
         'center',
       justifyContent:
@@ -1885,38 +2049,42 @@ const styles =
     },
 
     avatarText: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
       fontSize: 16,
       fontWeight: '600',
     },
 
     name: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
       fontSize: 15,
-      fontWeight: '600',
     },
 
     username: {
-      color: '#666666',
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
       fontSize: 13,
       marginTop: 2,
     },
 
     dropText: {
-      color: '#FFFFFF',
-      fontSize: 19,
-      lineHeight: 27,
-      marginTop: 18,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.regular,
+      fontSize: 18,
+      lineHeight: 25,
+      marginTop: 17,
     },
 
     meta: {
-      color: '#777777',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textSecondary,
       fontSize: 13,
       marginTop: 10,
     },
 
     joinTimerMeta: {
-      color: '#666666',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textSecondary,
       fontSize: 12,
       marginTop: 7,
     },
@@ -1936,45 +2104,46 @@ const styles =
 
     joinButton: {
       backgroundColor:
-        '#FFFFFF',
+        DropColors.wine,
       paddingHorizontal: 18,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingVertical: 9,
+      borderRadius: 14,
     },
 
     requestedButton: {
       backgroundColor:
-        '#222222',
+        DropColors.surface,
       borderWidth: 1,
       borderColor:
-        '#555555',
+        DropColors.border,
     },
 
     acceptedButton: {
       backgroundColor:
-        '#222222',
+        DropColors.surface,
       borderWidth: 1,
       borderColor:
-        '#444444',
+        DropColors.border,
     },
 
     joinText: {
-      color: '#000000',
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
       fontSize: 14,
-      fontWeight: '600',
     },
 
     requestedText: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
     },
 
     secondaryAction: {
-      color: '#888888',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textSecondary,
       fontSize: 14,
     },
 
     likedAction: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
       fontWeight: '600',
     },
 
@@ -1988,12 +2157,14 @@ const styles =
     },
 
     ownDrop: {
-      color: '#555555',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textMuted,
       fontSize: 12,
     },
 
     ownLikeCount: {
-      color: '#777777',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textSecondary,
       fontSize: 12,
     },
 
@@ -2002,7 +2173,8 @@ const styles =
     },
 
     deleteDropText: {
-      color: '#777777',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textSecondary,
       fontSize: 12,
     },
 
@@ -2013,9 +2185,31 @@ const styles =
     },
 
     requestsText: {
-      color: '#FFFFFF',
+      fontFamily: DropTypography.medium,
+      color: DropColors.warmWhite,
       fontSize: 14,
       fontWeight: '600',
+    },
+
+    mapPlaceholder: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 28,
+    },
+
+    mapPlaceholderTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 17,
+    },
+
+    mapPlaceholderText: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+      marginTop: 6,
+      textAlign: 'center',
     },
 
     emptyContainer: {
@@ -2025,31 +2219,32 @@ const styles =
         'center',
     },
 
-    emptyFindButton: {
+    emptyFindLink: {
       marginTop: 20,
-      height: 42,
-      paddingHorizontal: 22,
-      borderRadius: 21,
-      borderWidth: 1,
-      borderColor: '#2A2A2A',
-      alignItems: 'center',
-      justifyContent: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+    },
+
+    emptyFindLinkPressed: {
+      opacity: 0.55,
     },
 
     emptyFindText: {
-      color: '#FFFFFF',
+      color: DropColors.warmWhite,
       fontSize: 14,
       fontWeight: '600',
     },
 
     emptyTitle: {
-      color: '#FFFFFF',
+      fontFamily: DropTypography.medium,
+      color: DropColors.warmWhite,
       fontSize: 17,
       fontWeight: '600',
     },
 
     emptySubtitle: {
-      color: '#555555',
+      fontFamily: DropTypography.regular,
+      color: DropColors.textMuted,
       fontSize: 14,
       marginTop: 6,
     },

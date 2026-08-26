@@ -1,53 +1,81 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import {
+  Platform,
+} from 'react-native';
 
-import { Platform } from 'react-native';
+export const DropColors = {
+  graphite: '#292929',
+  warmWhite: '#FFF2E4',
+  wine: '#7D0D0D',
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+  surface: '#333333',
+  surfaceElevated: '#3A3A3A',
+  border: '#444444',
+  textSecondary: '#B8B0A8',
+  textMuted: '#77716C',
+} as const;
+
+export const DropTypography = {
+  light: 'FiraSans_300Light',
+  regular: 'FiraSans_400Regular',
+  medium: 'FiraSans_500Medium',
+  semibold: 'FiraSans_600SemiBold',
+  bold: 'FiraSans_700Bold',
+} as const;
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: DropColors.warmWhite,
+    background:
+      DropColors.graphite,
+    tint: DropColors.wine,
+    icon: DropColors.warmWhite,
+    tabIconDefault:
+      DropColors.textMuted,
+    tabIconSelected:
+      DropColors.wine,
   },
+
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    text: DropColors.warmWhite,
+    background:
+      DropColors.graphite,
+    tint: DropColors.wine,
+    icon: DropColors.warmWhite,
+    tabIconDefault:
+      DropColors.textMuted,
+    tabIconSelected:
+      DropColors.wine,
   },
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
-});
+export const Fonts =
+  Platform.select({
+    ios: {
+      sans:
+        DropTypography.regular,
+      serif: 'ui-serif',
+      rounded:
+        DropTypography.regular,
+      mono: 'ui-monospace',
+    },
+
+    default: {
+      sans:
+        DropTypography.regular,
+      serif: 'serif',
+      rounded:
+        DropTypography.regular,
+      mono: 'monospace',
+    },
+
+    web: {
+      sans:
+        'FiraSans_400Regular, sans-serif',
+      serif:
+        'Georgia, serif',
+      rounded:
+        'FiraSans_400Regular, sans-serif',
+      mono:
+        'monospace',
+    },
+  });
