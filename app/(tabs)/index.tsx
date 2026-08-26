@@ -20,7 +20,12 @@ import {
   View,
 } from 'react-native';
 
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
+import {
+  DropColors,
+  DropTypography,
+} from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 type DropAuthor = {
@@ -215,7 +220,9 @@ export default function HomeScreen() {
   const [
     deleteLoadingId,
     setDeleteLoadingId,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null
+  );
 
   const loadDrops = async (
     manualRefresh = false
@@ -249,13 +256,6 @@ export default function HomeScreen() {
         user.id
       );
 
-      /*
-       * FOLLOWING FEED
-       *
-       * Home contains:
-       * - your own Drops
-       * - Drops from people you follow
-       */
       const {
         data: followingData,
         error: followingError,
@@ -294,45 +294,45 @@ export default function HomeScreen() {
         ),
       ];
 
-      /*
-       * LOAD DROPS
-       */
-
       const {
         data,
         error,
-      } = await supabase
-        .from('drops')
-        .select(`
-          id,
-          author_id,
-          text,
-          city,
-          event_time,
-          join_enabled,
-          interested_enabled,
-          reply_enabled,
-          join_until,
-          deleted_at,
-          created_at,
-          profiles!drops_author_id_fkey (
-            username,
-            display_name,
+      } =
+        await supabase
+          .from('drops')
+          .select(`
+            id,
+            author_id,
+            text,
             city,
-            avatar_url
+            event_time,
+            join_enabled,
+            interested_enabled,
+            reply_enabled,
+            join_until,
+            deleted_at,
+            created_at,
+            profiles!drops_author_id_fkey (
+              username,
+              display_name,
+              city,
+              avatar_url
+            )
+          `)
+          .is(
+            'deleted_at',
+            null
           )
-        `)
-        .is('deleted_at', null)
-        .in(
-          'author_id',
-          feedAuthorIds
-        )
-        .order(
-          'created_at',
-          {
-            ascending: false,
-          }
-        );
+          .in(
+            'author_id',
+            feedAuthorIds
+          )
+          .order(
+            'created_at',
+            {
+              ascending: false,
+            }
+          );
 
       if (error) {
         console.error(
@@ -349,31 +349,25 @@ export default function HomeScreen() {
       }
 
       const loadedDrops =
-        (data ?? []) as unknown as Drop[];
+        (
+          data ?? []
+        ) as unknown as Drop[];
 
       setDrops(
         loadedDrops
       );
 
-      /*
-       * LOAD LIKES
-       */
-
       const {
         data: allLikes,
         error: allLikesError,
-      } = await supabase
-        .from('drop_likes')
-        .select(
-          'drop_id, user_id'
-        );
+      } =
+        await supabase
+          .from('drop_likes')
+          .select(
+            'drop_id, user_id'
+          );
 
-      if (allLikesError) {
-        console.error(
-          'LOAD LIKES ERROR:',
-          allLikesError
-        );
-      } else {
+      if (!allLikesError) {
         const nextLikedIds =
           new Set<string>();
 
@@ -414,35 +408,30 @@ export default function HomeScreen() {
         setLikeCounts(
           nextLikeCounts
         );
+      } else {
+        console.error(
+          'LOAD LIKES ERROR:',
+          allLikesError
+        );
       }
-
-      /*
-       * LOAD MY JOIN STATUSES
-       */
 
       const {
         data: myRequests,
         error: myRequestsError,
-      } = await supabase
-        .from(
-          'join_requests'
-        )
-        .select(
-          'drop_id, status'
-        )
-        .eq(
-          'user_id',
-          user.id
-        );
+      } =
+        await supabase
+          .from(
+            'join_requests'
+          )
+          .select(
+            'drop_id, status'
+          )
+          .eq(
+            'user_id',
+            user.id
+          );
 
-      if (
-        myRequestsError
-      ) {
-        console.error(
-          'MY JOIN REQUESTS ERROR:',
-          myRequestsError
-        );
-      } else {
+      if (!myRequestsError) {
         const nextStatuses:
           Record<
             string,
@@ -450,8 +439,10 @@ export default function HomeScreen() {
           > = {};
 
         (
-          (myRequests ??
-            []) as MyJoinRequest[]
+          (
+            myRequests ??
+            []
+          ) as MyJoinRequest[]
         ).forEach(
           (request) => {
             nextStatuses[
@@ -464,12 +455,12 @@ export default function HomeScreen() {
         setJoinStatuses(
           nextStatuses
         );
+      } else {
+        console.error(
+          'MY JOIN REQUESTS ERROR:',
+          myRequestsError
+        );
       }
-
-      /*
-       * LOAD PENDING COUNTS
-       * FOR MY OWN DROPS
-       */
 
       const ownDropIds =
         loadedDrops
@@ -511,14 +502,7 @@ export default function HomeScreen() {
               'pending'
             );
 
-        if (
-          pendingError
-        ) {
-          console.error(
-            'PENDING COUNTS ERROR:',
-            pendingError
-          );
-        } else {
+        if (!pendingError) {
           const counts:
             Record<
               string,
@@ -544,6 +528,11 @@ export default function HomeScreen() {
           setPendingCounts(
             counts
           );
+        } else {
+          console.error(
+            'PENDING COUNTS ERROR:',
+            pendingError
+          );
         }
       }
     } catch (error) {
@@ -557,13 +546,8 @@ export default function HomeScreen() {
         'Something went wrong while loading Drops.'
       );
     } finally {
-      setLoading(
-        false
-      );
-
-      setRefreshing(
-        false
-      );
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -575,10 +559,6 @@ export default function HomeScreen() {
       []
     )
   );
-
-  /*
-   * LIKE / UNLIKE
-   */
 
   const handleLike =
     async (
@@ -620,11 +600,6 @@ export default function HomeScreen() {
               );
 
           if (error) {
-            console.error(
-              'UNLIKE ERROR:',
-              error
-            );
-
             Alert.alert(
               'Error',
               'Could not remove Like.'
@@ -683,11 +658,6 @@ export default function HomeScreen() {
             });
 
         if (error) {
-          console.error(
-            'LIKE ERROR:',
-            error
-          );
-
           Alert.alert(
             'Error',
             'Could not Like this Drop.'
@@ -730,10 +700,6 @@ export default function HomeScreen() {
       }
     };
 
-  /*
-   * JOIN / CANCEL JOIN
-   */
-
   const handleJoin =
     async (
       drop: Drop
@@ -754,10 +720,6 @@ export default function HomeScreen() {
         setJoinLoadingId(
           drop.id
         );
-
-        /*
-         * CANCEL PENDING
-         */
 
         if (
           currentStatus ===
@@ -781,11 +743,6 @@ export default function HomeScreen() {
               );
 
           if (error) {
-            console.error(
-              'CANCEL JOIN ERROR:',
-              error
-            );
-
             Alert.alert(
               'Error',
               'Could not cancel your request.'
@@ -806,21 +763,12 @@ export default function HomeScreen() {
           return;
         }
 
-        /*
-         * ALREADY JOINED
-         */
-
         if (
           currentStatus ===
           'accepted'
         ) {
           return;
         }
-
-        /*
-         * DECLINED BEFORE:
-         * DELETE OLD ROW FIRST
-         */
 
         if (
           currentStatus ===
@@ -844,14 +792,7 @@ export default function HomeScreen() {
                 currentUserId
               );
 
-          if (
-            deleteError
-          ) {
-            console.error(
-              'DELETE OLD JOIN ERROR:',
-              deleteError
-            );
-
+          if (deleteError) {
             Alert.alert(
               'Error',
               'Could not send a new request.'
@@ -860,10 +801,6 @@ export default function HomeScreen() {
             return;
           }
         }
-
-        /*
-         * CREATE JOIN REQUEST
-         */
 
         const {
           error,
@@ -884,11 +821,6 @@ export default function HomeScreen() {
             });
 
         if (error) {
-          console.error(
-            'JOIN REQUEST ERROR:',
-            error
-          );
-
           Alert.alert(
             'Error',
             'Could not send Join request.'
@@ -912,29 +844,15 @@ export default function HomeScreen() {
       }
     };
 
-  /*
-   * UNIFIED DM REPLY
-   *
-   * One user pair = one conversation.
-   *
-   * Drop is stored as a conversation event,
-   * not as a separate chat.
-   */
-
   const handleReply =
     async (
       drop: Drop
     ) => {
       if (
         !currentUserId ||
-        replyLoadingId
-      ) {
-        return;
-      }
-
-      if (
+        replyLoadingId ||
         drop.author_id ===
-        currentUserId
+          currentUserId
       ) {
         return;
       }
@@ -946,12 +864,6 @@ export default function HomeScreen() {
 
         let conversationId:
           string | null = null;
-
-        /*
-         * 1.
-         * LOOK FOR EXISTING DM
-         * IN BOTH DIRECTIONS
-         */
 
         const {
           data:
@@ -973,14 +885,7 @@ export default function HomeScreen() {
             )
             .limit(1);
 
-        if (
-          existingError
-        ) {
-          console.error(
-            'FIND DM ERROR:',
-            existingError
-          );
-
+        if (existingError) {
           Alert.alert(
             'Error',
             'Could not open this conversation.'
@@ -1004,12 +909,6 @@ export default function HomeScreen() {
             existingConversation.id;
         }
 
-        /*
-         * 2.
-         * CREATE DM IF THESE TWO USERS
-         * HAVE NEVER TALKED BEFORE
-         */
-
         if (
           !conversationId
         ) {
@@ -1024,17 +923,6 @@ export default function HomeScreen() {
                 'conversations'
               )
               .insert({
-                /*
-                 * Legacy field.
-                 *
-                 * We keep the first Drop here
-                 * for now so the old chat UI
-                 * does not break.
-                 *
-                 * Later [id].tsx will stop
-                 * depending on conversations.drop_id.
-                 */
-
                 drop_id:
                   drop.id,
 
@@ -1055,27 +943,10 @@ export default function HomeScreen() {
               )
               .single();
 
-          if (
-            createError
-          ) {
-            console.error(
-              'CREATE DM ERROR:',
-              createError
-            );
-
-            /*
-             * Race-condition protection.
-             *
-             * Unique pair index may have blocked
-             * a duplicate DM that appeared
-             * between SELECT and INSERT.
-             */
-
+          if (createError) {
             const {
               data:
                 fallbackConversations,
-              error:
-                fallbackError,
             } =
               await supabase
                 .from(
@@ -1090,15 +961,6 @@ export default function HomeScreen() {
                   `and(author_id.eq.${drop.author_id},participant_id.eq.${currentUserId}),and(author_id.eq.${currentUserId},participant_id.eq.${drop.author_id})`
                 )
                 .limit(1);
-
-            if (
-              fallbackError
-            ) {
-              console.error(
-                'FALLBACK DM ERROR:',
-                fallbackError
-              );
-            }
 
             const fallbackConversation =
               (
@@ -1127,26 +989,11 @@ export default function HomeScreen() {
           }
         }
 
-        /*
-         * SAFETY CHECK
-         */
-
         if (
           !conversationId
         ) {
-          Alert.alert(
-            'Error',
-            'Could not open this conversation.'
-          );
-
           return;
         }
-
-        /*
-         * 3.
-         * STORE DROP CONTEXT
-         * INSIDE THE UNIFIED DM
-         */
 
         const {
           error:
@@ -1174,39 +1021,17 @@ export default function HomeScreen() {
             });
 
         if (
-          eventError
-        ) {
-          /*
-           * 23505:
-           * this exact Reply event
-           * already exists.
-           *
-           * That's fine.
-           * We simply reopen the DM.
-           */
-
-          if (
-            eventError.code !==
+          eventError &&
+          eventError.code !==
             '23505'
-          ) {
-            console.error(
-              'CREATE REPLY EVENT ERROR:',
-              eventError
-            );
+        ) {
+          Alert.alert(
+            'Error',
+            'Could not attach this Drop to the conversation.'
+          );
 
-            Alert.alert(
-              'Error',
-              'Could not attach this Drop to the conversation.'
-            );
-
-            return;
-          }
+          return;
         }
-
-        /*
-         * 4.
-         * OPEN THE SINGLE DM
-         */
 
         router.push(
           `/chat/${conversationId}`
@@ -1228,94 +1053,102 @@ export default function HomeScreen() {
       }
     };
 
-  const handleDeleteDrop = (drop: Drop) => {
-    if (
-      drop.author_id !== currentUserId ||
-      deleteLoadingId
-    ) {
-      return;
-    }
+  const handleDeleteDrop =
+    (
+      drop: Drop
+    ) => {
+      if (
+        drop.author_id !==
+          currentUserId ||
+        deleteLoadingId
+      ) {
+        return;
+      }
 
-    Alert.alert(
-      'Delete Drop?',
-      'The Drop will disappear from profiles and feeds. Existing chats will stay available.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleteLoadingId(drop.id);
-
-              const { error } =
-                await supabase.rpc(
-                  'delete_own_drop',
-                  {
-                    target_drop_id: drop.id,
-                  }
-                );
-
-              if (error) {
-                console.error(
-                  'DELETE DROP ERROR:',
-                  error
-                );
-
-                Alert.alert(
-                  'Error',
-                  'Could not delete this Drop.'
-                );
-                return;
-              }
-
-              setDrops((current) =>
-                current.filter(
-                  (item) => item.id !== drop.id
-                )
-              );
-            } finally {
-              setDeleteLoadingId(null);
-            }
+      Alert.alert(
+        'Delete Drop?',
+        'The Drop will disappear from profiles and feeds. Existing chats will stay available.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
           },
-        },
-      ]
-    );
-  };
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress:
+              async () => {
+                try {
+                  setDeleteLoadingId(
+                    drop.id
+                  );
 
-  /*
-   * PROFILE
-   */
+                  const {
+                    error,
+                  } =
+                    await supabase.rpc(
+                      'delete_own_drop',
+                      {
+                        target_drop_id:
+                          drop.id,
+                      }
+                    );
 
-  const openProfile = (
-    drop: Drop
-  ) => {
-    if (
-      drop.author_id ===
-      currentUserId
-    ) {
-      router.push(
-        '/profile'
+                  if (error) {
+                    Alert.alert(
+                      'Error',
+                      'Could not delete this Drop.'
+                    );
+
+                    return;
+                  }
+
+                  setDrops(
+                    (current) =>
+                      current.filter(
+                        (item) =>
+                          item.id !==
+                          drop.id
+                      )
+                  );
+                } finally {
+                  setDeleteLoadingId(
+                    null
+                  );
+                }
+              },
+          },
+        ]
       );
+    };
 
-      return;
-    }
+  const openProfile =
+    (
+      drop: Drop
+    ) => {
+      if (
+        drop.author_id ===
+        currentUserId
+      ) {
+        router.push(
+          '/profile'
+        );
 
-    const username =
-      drop.profiles
-        ?.username;
+        return;
+      }
 
-    if (!username) {
-      return;
-    }
+      const username =
+        drop.profiles
+          ?.username;
 
-    router.push(
-      `/user/${username}`
-    );
-  };
+      if (!username) {
+        return;
+      }
+
+      router.push(
+        `/user/${username}`
+      );
+    };
 
   if (loading) {
     return (
@@ -1324,7 +1157,11 @@ export default function HomeScreen() {
           styles.loadingContainer
         }
       >
-        <ActivityIndicator />
+        <ActivityIndicator
+          color={
+            DropColors.warmWhite
+          }
+        />
       </View>
     );
   }
@@ -1342,7 +1179,9 @@ export default function HomeScreen() {
       >
         <View>
           <Text
-            style={styles.logo}
+            style={
+              styles.logo
+            }
           >
             DROP
           </Text>
@@ -1356,28 +1195,33 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
+        <Pressable
           onPress={() =>
             router.push(
-              '/create'
+              '/activity'
             )
           }
-          activeOpacity={0.7}
-          style={
-            styles.createButton
-          }
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.activityButton,
+            pressed &&
+              styles.iconButtonPressed,
+          ]}
         >
-          <Text
-            style={
-              styles.headerButton
+          <IconSymbol
+            name="bell.fill"
+            size={21}
+            color={
+              DropColors.warmWhite
             }
-          >
-            +
-          </Text>
-        </TouchableOpacity>
+          />
+        </Pressable>
       </View>
 
       <ScrollView
+        contentContainerStyle={
+          styles.feedContent
+        }
         refreshControl={
           <RefreshControl
             refreshing={
@@ -1388,7 +1232,9 @@ export default function HomeScreen() {
                 true
               )
             }
-            tintColor="#FFFFFF"
+            tintColor={
+              DropColors.warmWhite
+            }
           />
         }
       >
@@ -1415,49 +1261,26 @@ export default function HomeScreen() {
               Follow people to bring their Drops here, or post your own.
             </Text>
 
-            <View
-              style={
-                styles.emptyActions
+            <Pressable
+              style={({ pressed }) => [
+                styles.emptyExplore,
+                pressed &&
+                  styles.iconButtonPressed,
+              ]}
+              onPress={() =>
+                router.push(
+                  '/explore'
+                )
               }
             >
-              <Pressable
+              <Text
                 style={
-                  styles.emptyPrimaryButton
-                }
-                onPress={() =>
-                  router.push(
-                    '/explore'
-                  )
+                  styles.emptyExploreText
                 }
               >
-                <Text
-                  style={
-                    styles.emptyPrimaryText
-                  }
-                >
-                  Explore Drops
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={
-                  styles.emptySecondaryButton
-                }
-                onPress={() =>
-                  router.push(
-                    '/create'
-                  )
-                }
-              >
-                <Text
-                  style={
-                    styles.emptySecondaryText
-                  }
-                >
-                  Create a Drop
-                </Text>
-              </Pressable>
-            </View>
+                Explore Drops
+              </Text>
+            </Pressable>
           </View>
         ) : (
           drops.map(
@@ -1509,7 +1332,9 @@ export default function HomeScreen() {
                 ] ?? 0;
 
               const joinOpen =
-                isJoinOpen(drop);
+                isJoinOpen(
+                  drop
+                );
 
               const joinTimerLabel =
                 formatJoinTimer(
@@ -1535,23 +1360,34 @@ export default function HomeScreen() {
                       )
                     }
                   >
-                    <View style={styles.avatar}>
+                    <View
+                      style={
+                        styles.avatar
+                      }
+                    >
                       <UserAvatar
-                        uri={drop.profiles?.avatar_url}
-                        name={displayName}
-                        size={44}
+                        uri={
+                          drop.profiles
+                            ?.avatar_url
+                        }
+                        name={
+                          displayName
+                        }
+                        size={40}
                       />
                     </View>
 
-                    <View>
+                    <View
+                      style={
+                        styles.authorText
+                      }
+                    >
                       <Text
                         style={
                           styles.name
                         }
                       >
-                        {
-                          displayName
-                        }
+                        {displayName}
                       </Text>
 
                       <Text
@@ -1575,9 +1411,7 @@ export default function HomeScreen() {
                       styles.dropText
                     }
                   >
-                    {
-                      drop.text
-                    }
+                    {drop.text}
                   </Text>
 
                   {!!location && (
@@ -1586,9 +1420,7 @@ export default function HomeScreen() {
                         styles.meta
                       }
                     >
-                      {
-                        location
-                      }
+                      {location}
                     </Text>
                   )}
 
@@ -1596,6 +1428,7 @@ export default function HomeScreen() {
                     <Text
                       style={[
                         styles.joinTimerMeta,
+
                         !joinOpen &&
                           styles.joinTimerClosed,
                       ]}
@@ -1629,6 +1462,7 @@ export default function HomeScreen() {
                             joinStatus ===
                               'accepted'
                           }
+                          activeOpacity={0.72}
                           onPress={() =>
                             handleJoin(
                               drop
@@ -1738,15 +1572,14 @@ export default function HomeScreen() {
                             styles.ownLikeCount
                           }
                         >
-                          ♥{' '}
-                          {
-                            likeCount
-                          }
+                          ♥ {likeCount}
                         </Text>
 
                         <Pressable
                           onPress={() =>
-                            handleDeleteDrop(drop)
+                            handleDeleteDrop(
+                              drop
+                            )
                           }
                           disabled={
                             deleteLoadingId ===
@@ -1796,15 +1629,11 @@ export default function HomeScreen() {
                               styles.requestsText
                             }
                           >
-                            {
-                              pendingCount
-                            }{' '}
-
+                            {pendingCount}{' '}
                             {pendingCount ===
                             1
                               ? 'request'
                               : 'requests'}
-
                             {'  →'}
                           </Text>
                         </TouchableOpacity>
@@ -1817,6 +1646,28 @@ export default function HomeScreen() {
           )
         )}
       </ScrollView>
+
+      <Pressable
+        onPress={() =>
+          router.push(
+            '/create'
+          )
+        }
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.floatingCreateButton,
+          pressed &&
+            styles.floatingCreateButtonPressed,
+        ]}
+      >
+        <Text
+          style={
+            styles.floatingCreateText
+          }
+        >
+          +
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -1826,13 +1677,13 @@ const styles =
     container: {
       flex: 1,
       backgroundColor:
-        '#000000',
+        DropColors.graphite,
     },
 
     loadingContainer: {
       flex: 1,
       backgroundColor:
-        '#000000',
+        DropColors.graphite,
       alignItems:
         'center',
       justifyContent:
@@ -1840,12 +1691,13 @@ const styles =
     },
 
     header: {
-      paddingTop: 56,
-      paddingHorizontal: 20,
-      paddingBottom: 14,
-      borderBottomWidth: 1,
+      paddingTop: 52,
+      paddingHorizontal: 18,
+      paddingBottom: 13,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
       borderBottomColor:
-        '#1A1A1A',
+        DropColors.border,
       flexDirection:
         'row',
       justifyContent:
@@ -1855,42 +1707,49 @@ const styles =
     },
 
     logo: {
-      color: '#FFFFFF',
-      fontSize: 22,
-      fontWeight: '700',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.semibold,
+      fontSize: 21,
       letterSpacing: 3,
     },
 
     feedLabel: {
-      color: '#555555',
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.semibold,
       fontSize: 9,
-      fontWeight: '700',
-      letterSpacing: 1.4,
-      marginTop: 3,
+      letterSpacing: 1.35,
+      marginTop: 2,
     },
 
-    createButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      borderWidth: 1,
-      borderColor: '#2A2A2A',
-      alignItems: 'center',
-      justifyContent: 'center',
+    activityButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
     },
 
-    headerButton: {
-      color: '#FFFFFF',
-      fontSize: 25,
-      fontWeight: '300',
+    iconButtonPressed: {
+      opacity: 0.62,
+    },
+
+    feedContent: {
+      paddingBottom: 88,
     },
 
     drop: {
-      paddingHorizontal: 20,
-      paddingVertical: 22,
-      borderBottomWidth: 1,
+      paddingHorizontal: 18,
+      paddingVertical: 17,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
       borderBottomColor:
-        '#1A1A1A',
+        DropColors.border,
     },
 
     userRow: {
@@ -1901,57 +1760,70 @@ const styles =
     },
 
     avatar: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor:
-        '#222222',
+        DropColors.surface,
       alignItems:
         'center',
       justifyContent:
         'center',
-      marginRight: 12,
+      marginRight: 10,
     },
 
-    avatarText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
+    authorText: {
+      flexShrink: 1,
     },
 
     name: {
-      color: '#FFFFFF',
-      fontSize: 15,
-      fontWeight: '600',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 14,
     },
 
     username: {
-      color: '#666666',
-      fontSize: 13,
-      marginTop: 2,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 12,
+      marginTop: 1,
     },
 
     dropText: {
-      color: '#FFFFFF',
-      fontSize: 19,
-      lineHeight: 27,
-      marginTop: 18,
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 17,
+      lineHeight: 23,
+      marginTop: 14,
     },
 
     meta: {
-      color: '#777777',
-      fontSize: 13,
-      marginTop: 10,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 12,
+      marginTop: 8,
     },
 
     joinTimerMeta: {
-      color: '#666666',
-      fontSize: 12,
-      marginTop: 7,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
+      marginTop: 6,
     },
 
     joinTimerClosed: {
-      color: '#444444',
+      color:
+        DropColors.textMuted,
     },
 
     actions: {
@@ -1959,52 +1831,62 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 22,
-      marginTop: 18,
+      gap: 18,
+      marginTop: 14,
     },
 
     joinButton: {
       backgroundColor:
-        '#FFFFFF',
-      paddingHorizontal: 18,
-      paddingVertical: 8,
-      borderRadius: 20,
+        DropColors.wine,
+      paddingHorizontal: 15,
+      paddingVertical: 7,
+      borderRadius: 15,
     },
 
     requestedButton: {
       backgroundColor:
-        '#222222',
-      borderWidth: 1,
+        DropColors.surface,
+      borderWidth:
+        StyleSheet.hairlineWidth,
       borderColor:
-        '#555555',
+        DropColors.border,
     },
 
     acceptedButton: {
       backgroundColor:
-        '#222222',
-      borderWidth: 1,
+        DropColors.surface,
+      borderWidth:
+        StyleSheet.hairlineWidth,
       borderColor:
-        '#444444',
+        DropColors.border,
     },
 
     joinText: {
-      color: '#000000',
-      fontSize: 14,
-      fontWeight: '600',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
     },
 
     requestedText: {
-      color: '#FFFFFF',
+      color:
+        DropColors.warmWhite,
     },
 
     secondaryAction: {
-      color: '#888888',
-      fontSize: 14,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 13,
     },
 
     likedAction: {
-      color: '#FFFFFF',
-      fontWeight: '600',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
     },
 
     ownDropRow: {
@@ -2012,18 +1894,24 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 14,
-      marginTop: 14,
+      gap: 12,
+      marginTop: 12,
     },
 
     ownDrop: {
-      color: '#555555',
-      fontSize: 12,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     ownLikeCount: {
-      color: '#777777',
-      fontSize: 12,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     deleteDropButton: {
@@ -2031,74 +1919,106 @@ const styles =
     },
 
     deleteDropText: {
-      color: '#777777',
-      fontSize: 12,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     requestsButton: {
-      marginTop: 12,
+      marginTop: 10,
       alignSelf:
         'flex-start',
     },
 
     requestsText: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
+    },
+
+    floatingCreateButton: {
+      position:
+        'absolute',
+      right: 18,
+      bottom: 18,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor:
+        DropColors.wine,
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      zIndex: 20,
+      elevation: 6,
+    },
+
+    floatingCreateButtonPressed: {
+      opacity: 0.72,
+      transform: [
+        {
+          scale: 0.97,
+        },
+      ],
+    },
+
+    floatingCreateText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.light,
+      fontSize: 40,
+      lineHeight: 34,
+      marginTop: 14,
     },
 
     emptyContainer: {
-      paddingHorizontal: 20,
-      paddingTop: 56,
+      paddingHorizontal: 24,
+      paddingTop: 60,
       alignItems:
         'center',
     },
 
-    emptyActions: {
-      width: '100%',
-      maxWidth: 280,
-      marginTop: 22,
-      gap: 10,
-    },
-
-    emptyPrimaryButton: {
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: '#FFFFFF',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    emptyPrimaryText: {
-      color: '#000000',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-
-    emptySecondaryButton: {
-      height: 44,
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: '#2A2A2A',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    emptySecondaryText: {
-      color: '#AAAAAA',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-
     emptyTitle: {
-      color: '#FFFFFF',
-      fontSize: 17,
-      fontWeight: '600',
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 16,
+      textAlign: 'center',
     },
 
     emptySubtitle: {
-      color: '#555555',
-      fontSize: 14,
-      marginTop: 6,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: 'center',
+      marginTop: 7,
+    },
+
+    emptyExplore: {
+      marginTop: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
+
+    emptyExploreText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
     },
   });
