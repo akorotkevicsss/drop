@@ -11,6 +11,7 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  ImageBackground,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -45,6 +46,12 @@ type Drop = {
   interested_enabled: boolean;
   reply_enabled: boolean;
   join_until: string | null;
+  background_color: string | null;
+  image_path: string | null;
+  attached_image_path: string | null;
+  location_text: string | null;
+  join_limit: number | null;
+  age_restriction: string | null;
   deleted_at: string | null;
   created_at: string;
   profiles: DropAuthor | null;
@@ -310,6 +317,12 @@ export default function HomeScreen() {
             interested_enabled,
             reply_enabled,
             join_until,
+            background_color,
+            image_path,
+            attached_image_path,
+            location_text,
+            join_limit,
+            age_restriction,
             deleted_at,
             created_at,
             profiles!drops_author_id_fkey (
@@ -1306,10 +1319,37 @@ export default function HomeScreen() {
                 );
 
               const location =
+                drop.location_text ||
                 drop.city ||
                 drop
                   .profiles
                   ?.city;
+
+              const imageUrl =
+                drop.image_path
+                  ? supabase.storage
+                      .from(
+                        'drop-images'
+                      )
+                      .getPublicUrl(
+                        drop.image_path
+                      ).data.publicUrl
+                  : null;
+
+              const attachedImageUrl =
+                drop.attached_image_path
+                  ? supabase.storage
+                      .from(
+                        'drop-images'
+                      )
+                      .getPublicUrl(
+                        drop.attached_image_path
+                      ).data.publicUrl
+                  : null;
+
+              const hasBackground =
+                !!drop.background_color ||
+                !!imageUrl;
 
               const joinStatus =
                 joinStatuses[
@@ -1406,13 +1446,78 @@ export default function HomeScreen() {
                     </View>
                   </Pressable>
 
-                  <Text
-                    style={
-                      styles.dropText
-                    }
-                  >
-                    {drop.text}
-                  </Text>
+                  {hasBackground ? (
+                    imageUrl ? (
+                      <ImageBackground
+                        source={{
+                          uri:
+                            imageUrl,
+                        }}
+                        style={
+                          styles.dropVisual
+                        }
+                        imageStyle={
+                          styles.dropVisualImage
+                        }
+                      >
+                        <View
+                          style={
+                            styles.dropVisualOverlay
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.dropVisualText
+                            }
+                          >
+                            {drop.text}
+                          </Text>
+                        </View>
+                      </ImageBackground>
+                    ) : (
+                      <View
+                        style={[
+                          styles.dropVisual,
+                          {
+                            backgroundColor:
+                              drop.background_color ??
+                              DropColors.surface,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={
+                            styles.dropVisualText
+                          }
+                        >
+                          {drop.text}
+                        </Text>
+                      </View>
+                    )
+                  ) : (
+                    <Text
+                      style={
+                        styles.dropText
+                      }
+                    >
+                      {drop.text}
+                    </Text>
+                  )}
+
+                  {!!attachedImageUrl && (
+                    <ImageBackground
+                      source={{
+                        uri:
+                          attachedImageUrl,
+                      }}
+                      style={
+                        styles.attachedImage
+                      }
+                      imageStyle={
+                        styles.attachedImageRadius
+                      }
+                    />
+                  )}
 
                   {!!location && (
                     <Text
@@ -1423,6 +1528,42 @@ export default function HomeScreen() {
                       {location}
                     </Text>
                   )}
+
+                  {(drop.age_restriction &&
+                    drop.age_restriction !==
+                      'everyone') ||
+                  drop.join_limit ? (
+                    <View
+                      style={
+                        styles.dropDetailsRow
+                      }
+                    >
+                      {drop.age_restriction &&
+                        drop.age_restriction !==
+                          'everyone' && (
+                          <Text
+                            style={
+                              styles.detailMeta
+                            }
+                          >
+                            {drop.age_restriction ===
+                            'under16'
+                              ? 'Under 16'
+                              : drop.age_restriction}
+                          </Text>
+                        )}
+
+                      {!!drop.join_limit && (
+                        <Text
+                          style={
+                            styles.detailMeta
+                          }
+                        >
+                          Join limit · {drop.join_limit}
+                        </Text>
+                      )}
+                    </View>
+                  ) : null}
 
                   {!!joinTimerLabel && (
                     <Text
@@ -1803,6 +1944,74 @@ const styles =
       marginTop: 14,
     },
 
+    dropVisual: {
+      minHeight: 176,
+      marginTop: 14,
+      borderRadius: 16,
+      overflow: 'hidden',
+      justifyContent:
+        'center',
+    },
+
+    dropVisualImage: {
+      borderRadius: 16,
+    },
+
+    dropVisualOverlay: {
+      minHeight: 176,
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+      backgroundColor:
+        'rgba(0,0,0,0.70)',
+      justifyContent:
+        'center',
+    },
+
+    dropVisualText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 18,
+      lineHeight: 25,
+      textShadowColor:
+        'rgba(0,0,0,0.38)',
+      textShadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      textShadowRadius: 3,
+    },
+
+    dropDetailsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 7,
+    },
+
+    detailMeta: {
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
+    },
+
+    attachedImage: {
+      width: '100%',
+      aspectRatio: 4 / 3,
+      marginTop: 12,
+      borderRadius: 16,
+      overflow: 'hidden',
+      backgroundColor:
+        DropColors.surface,
+    },
+
+    attachedImageRadius: {
+      borderRadius: 16,
+    },
+
     meta: {
       color:
         DropColors.textSecondary,
@@ -1976,9 +2185,15 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.light,
-      fontSize: 40,
-      lineHeight: 34,
-      marginTop: 14,
+      fontSize: 44,
+      lineHeight: 42,
+      textAlign: 'center',
+      includeFontPadding: false,
+      transform: [
+        {
+          translateY: 6,
+        },
+      ],
     },
 
     emptyContainer: {
