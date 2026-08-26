@@ -1,492 +1,526 @@
+import { router } from 'expo-router';
 import {
-    router,
-    useFocusEffect,
-} from 'expo-router';
-
-import {
-    useCallback,
-    useMemo,
-    useState,
+  useEffect,
+  useMemo,
+  useState,
 } from 'react';
 
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
 
+import { UserAvatar } from '@/components/user-avatar';
 import {
-    UserAvatar,
-} from '@/components/user-avatar';
-
-import {
-    DropColors,
-    DropTypography,
+  DropColors,
+  DropTypography,
 } from '@/constants/theme';
-
-import {
-    supabase,
-} from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 type UserResult = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
+ id: string;
+ username: string | null;
+ display_name: string | null;
+ avatar_url: string | null;
+ city: string | null;
 };
 
 export function ExplorePeopleSearch() {
-  const [query, setQuery] =
-    useState('');
+ const [query, setQuery] =
+   useState('');
 
-  const [users, setUsers] =
-    useState<UserResult[]>([]);
+ const [users, setUsers] =
+   useState<UserResult[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+ const [loading, setLoading] =
+   useState(true);
 
-  const loadUsers =
-    useCallback(
-      async () => {
-        try {
-          setLoading(true);
+ useEffect(() => {
+   let mounted = true;
 
-          const {
-            data: { user },
-          } =
-            await supabase.auth.getUser();
+   const loadUsers = async () => {
+     try {
+       setLoading(true);
 
-          if (!user) {
-            setUsers([]);
-            return;
-          }
+       const {
+         data: { user },
+         error: userError,
+       } =
+         await supabase.auth.getUser();
 
-          const {
-            data,
-            error,
-          } =
-            await supabase
-              .from('profiles')
-              .select(`
-                id,
-                username,
-                display_name,
-                avatar_url
-              `)
-              .neq(
-                'id',
-                user.id
-              )
-              .order(
-                'display_name',
-                {
-                  ascending:
-                    true,
-                }
-              )
-              .limit(100);
+       if (
+         userError ||
+         !user
+       ) {
+         return;
+       }
 
-          if (error) {
-            console.error(
-              'EXPLORE PEOPLE SEARCH ERROR:',
-              error
-            );
-            return;
-          }
+       const {
+         data,
+         error,
+       } =
+         await supabase
+           .from('profiles')
+           .select(`
+             id,
+             username,
+             display_name,
+             avatar_url,
+             city
+           `)
+           .neq(
+             'id',
+             user.id
+           )
+           .order(
+             'display_name',
+             {
+               ascending: true,
+             }
+           )
+           .limit(100);
 
-          setUsers(
-            (
-              data ?? []
-            ) as UserResult[]
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      []
-    );
+       if (error) {
+         console.error(
+           'EXPLORE PEOPLE SEARCH ERROR:',
+           error
+         );
 
-  useFocusEffect(
-    useCallback(
-      () => {
-        loadUsers();
-      },
-      [
-        loadUsers,
-      ]
-    )
-  );
+         return;
+       }
+
+       if (mounted) {
+         setUsers(
+           (data ?? []) as UserResult[]
+         );
+       }
+     } finally {
+       if (mounted) {
+         setLoading(false);
+       }
+     }
+   };
+
+     loadUsers();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const results =
-    useMemo(
-      () => {
-        const normalized =
-          query
-            .trim()
-            .toLowerCase()
-            .replace(
-              /^@/,
+    useMemo(() => {
+      const normalized =
+        query
+          .trim()
+          .toLowerCase()
+          .replace(/^@/, '');
+
+      if (!normalized) {
+        return [];
+      }
+
+      return users.filter(
+        (user) => {
+          const username =
+            (
+              user.username ??
               ''
-            );
+            ).toLowerCase();
 
-        if (!normalized) {
-          return [];
+          const displayName =
+            (
+              user.display_name ??
+              ''
+            ).toLowerCase();
+
+          const city =
+            (
+              user.city ??
+              ''
+            ).toLowerCase();
+
+          return (
+            username.includes(
+              normalized
+            ) ||
+            displayName.includes(
+              normalized
+            ) ||
+            city.includes(
+              normalized
+            )
+          );
         }
-
-        return users.filter(
-          (user) => {
-            const username =
-              (
-                user.username ??
-                ''
-              ).toLowerCase();
-
-            const displayName =
-              (
-                user.display_name ??
-                ''
-              ).toLowerCase();
-
-            return (
-              username.includes(
-                normalized
-              ) ||
-              displayName.includes(
-                normalized
-              )
-            );
-          }
-        );
-      },
-      [
-        query,
-        users,
-      ]
-    );
-
-  if (loading) {
-    return (
-      <View
-        style={
-          styles.loadingContainer
-        }
-      >
-        <ActivityIndicator
-          color={
-            DropColors.wine
-          }
-        />
-      </View>
-    );
-  }
+      );
+    }, [
+      query,
+      users,
+    ]);
 
   return (
-    <View
-      style={
-        styles.container
-      }
+    <TouchableWithoutFeedback
+      onPress={Keyboard.dismiss}
+      accessible={false}
     >
-      <View
-        style={
-          styles.searchContainer
-        }
-      >
-        <TextInput
-          style={
-            styles.searchInput
-          }
-          value={
-            query
-          }
-          onChangeText={
-            setQuery
-          }
-          placeholder="Search people"
-          placeholderTextColor={
-            DropColors.textMuted
-          }
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          selectionColor={
-            DropColors.wine
-          }
-        />
-      </View>
+      <View style={styles.container}>
+        <View style={styles.searchRow}>
+          <Text style={styles.searchIcon}>
+            ⌕
+          </Text>
 
-      {!query.trim() ? (
-        <View
-          style={
-            styles.emptyContainer
-          }
-        >
-          <View
-            style={
-              styles.accentDot
+          <TextInput
+            style={styles.input}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search people"
+            placeholderTextColor={
+              DropColors.textMuted
+            }
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            selectionColor={
+              DropColors.wine
             }
           />
 
-          <Text
-            style={
-              styles.emptyTitle
-            }
-          >
-            Find people
-          </Text>
-
-          <Text
-            style={
-              styles.emptySubtitle
-            }
-          >
-            Search by name or @username.
-          </Text>
+          {!!query && (
+            <Pressable
+              onPress={() =>
+                setQuery('')
+              }
+              hitSlop={10}
+            >
+              <Text style={styles.clear}>
+                ×
+              </Text>
+            </Pressable>
+          )}
         </View>
-      ) : results.length === 0 ? (
-        <View
-          style={
-            styles.emptyContainer
-          }
-        >
-          <Text
+
+        {loading ? (
+          <View
             style={
-              styles.emptyTitle
+              styles.stateContainer
             }
           >
-            No users found
-          </Text>
-
-          <Text
+            <ActivityIndicator
+              color={
+                DropColors.warmWhite
+              }
+            />
+          </View>
+        ) : !query.trim() ? (
+          <View
             style={
-              styles.emptySubtitle
+              styles.stateContainer
             }
           >
-            Try another name or username.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
-        >
-          {results.map(
-            (user) => {
-              const name =
-                user.display_name ||
-                user.username ||
-                'Unnamed user';
+            <Text
+              style={
+                styles.stateTitle
+              }
+            >
+              Find people
+            </Text>
 
-              return (
-                <Pressable
-                  key={
-                    user.id
-                  }
-                  style={({
-                    pressed,
-                  }) => [
-                    styles.userRow,
-                    pressed &&
-                      styles.userRowPressed,
-                  ]}
-                  onPress={() => {
-                    if (
-                      !user.username
-                    ) {
-                      return;
-                    }
+            <Text
+              style={
+                styles.stateSubtitle
+              }
+            >
+              Search by name, @username or city.
+            </Text>
+          </View>
+        ) : results.length === 0 ? (
+          <View
+            style={
+              styles.stateContainer
+            }
+          >
+            <Text
+              style={
+                styles.stateTitle
+              }
+            >
+              No people found
+            </Text>
 
-                    router.push(
-                      `/user/${user.username}`
-                    );
-                  }}
-                >
-                  <UserAvatar
-                    uri={
-                      user.avatar_url
-                    }
-                    name={
-                      name
-                    }
-                    size={48}
-                  />
+            <Text
+              style={
+                styles.stateSubtitle
+              }
+            >
+              Try another name or username.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={
+              false
+            }
+            contentContainerStyle={
+              styles.resultsContent
+            }
+          >
+            {results.map(
+              (user) => {
+                const name =
+                  user.display_name ||
+                  user.username ||
+                  'Unnamed user';
 
-                  <View
-                    style={
-                      styles.userText
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.name
+                return (
+                  <Pressable
+                    key={user.id}
+                    style={({
+                      pressed,
+                    }) => [
+                      styles.userRow,
+                      pressed &&
+                        styles.userRowPressed,
+                    ]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+
+                      if (
+                        !user.username
+                      ) {
+                        return;
                       }
-                      numberOfLines={1}
-                    >
-                      {name}
-                    </Text>
 
-                    {!!user.username && (
+                      router.push(
+                        `/user/${user.username}`
+                      );
+                    }}
+                  >
+                    <UserAvatar
+                      uri={
+                        user.avatar_url
+                      }
+                      name={name}
+                      size={46}
+                    />
+
+                    <View
+                      style={
+                        styles.userText
+                      }
+                    >
                       <Text
                         style={
-                          styles.username
+                          styles.name
                         }
-                        numberOfLines={1}
                       >
-                        @{user.username}
+                        {name}
                       </Text>
-                    )}
-                  </View>
 
-                  <Text
-                    style={
-                      styles.chevron
-                    }
-                  >
-                    ›
-                  </Text>
-                </Pressable>
-              );
-            }
-          )}
-        </ScrollView>
-      )}
-    </View>
+                      <View
+                        style={
+                          styles.metaRow
+                        }
+                      >
+                        {!!user.username && (
+                          <Text
+                            style={
+                              styles.username
+                            }
+                          >
+                            @{user.username}
+                          </Text>
+                        )}
+
+                        {!!user.city && (
+                          <>
+                            <Text
+                              style={
+                                styles.metaDot
+                              }
+                            >
+                              ·
+                            </Text>
+
+                            <Text
+                              style={
+                                styles.city
+                              }
+                            >
+                              {user.city}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+
+                    <Text
+                      style={
+                        styles.chevron
+                      }
+                    >
+                      ›
+                    </Text>
+                  </Pressable>
+                );
+              }
+            )}
+          </ScrollView>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        DropColors.graphite,
-    },
+ StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor:
+       DropColors.graphite,
+   },
 
-    loadingContainer: {
-      flex: 1,
-      backgroundColor:
-        DropColors.graphite,
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-    },
+   searchRow: {
+     marginHorizontal: 18,
+     marginTop: 18,
+     minHeight: 52,
+     flexDirection: 'row',
+     alignItems: 'center',
+     borderBottomWidth:
+       StyleSheet.hairlineWidth,
+     borderBottomColor:
+       DropColors.border,
+   },
 
-    searchContainer: {
-      paddingHorizontal: 18,
-      paddingTop: 18,
-      paddingBottom: 10,
-    },
+   searchIcon: {
+     color:
+       DropColors.textSecondary,
+     fontSize: 22,
+     marginRight: 10,
+     marginBottom: 2,
+   },
 
-    searchInput: {
-      height: 48,
-      borderRadius: 15,
-      backgroundColor:
-        DropColors.surface,
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 15,
-      paddingHorizontal: 16,
-    },
+   input: {
+     flex: 1,
+     color:
+       DropColors.warmWhite,
+     fontFamily:
+       DropTypography.regular,
+     fontSize: 17,
+     paddingVertical: 13,
+   },
 
-    emptyContainer: {
-      flex: 1,
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-      paddingHorizontal: 40,
-      paddingBottom: 80,
-    },
+   clear: {
+     color:
+       DropColors.textSecondary,
+     fontSize: 25,
+     fontWeight: '300',
+     paddingLeft: 10,
+   },
 
-    accentDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor:
-        DropColors.wine,
-      marginBottom: 14,
-    },
+   stateContainer: {
+     flex: 1,
+     minHeight: 360,
+     alignItems: 'center',
+     justifyContent: 'center',
+     paddingHorizontal: 36,
+   },
 
-    emptyTitle: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 17,
-    },
+   stateTitle: {
+     color:
+       DropColors.warmWhite,
+     fontFamily:
+       DropTypography.medium,
+     fontSize: 17,
+     textAlign: 'center',
+   },
 
-    emptySubtitle: {
-      color:
-        DropColors.textSecondary,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 13,
-      marginTop: 7,
-      textAlign:
-        'center',
-    },
+   stateSubtitle: {
+     color:
+       DropColors.textSecondary,
+     fontFamily:
+       DropTypography.regular,
+     fontSize: 13,
+     lineHeight: 19,
+     textAlign: 'center',
+     marginTop: 7,
+   },
 
-    userRow: {
-      minHeight: 74,
-      marginHorizontal: 16,
-      marginTop: 10,
-      paddingHorizontal: 14,
-      flexDirection:
-        'row',
-      alignItems:
-        'center',
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-      borderRadius: 16,
-      backgroundColor:
-        DropColors.surface,
-    },
+   resultsContent: {
+     paddingTop: 8,
+     paddingBottom: 24,
+   },
 
-    userRowPressed: {
-      opacity: 0.6,
-    },
+   userRow: {
+     minHeight: 72,
+     paddingHorizontal: 18,
+     flexDirection: 'row',
+     alignItems: 'center',
+     borderBottomWidth:
+       StyleSheet.hairlineWidth,
+     borderBottomColor:
+       DropColors.border,
+   },
 
-    userText: {
-      flex: 1,
-      marginLeft: 13,
-    },
+   userRowPressed: {
+     opacity: 0.62,
+   },
 
-    name: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 15,
-    },
+   userText: {
+     flex: 1,
+     marginLeft: 13,
+   },
 
-    username: {
-      color:
-        DropColors.textSecondary,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 13,
-      marginTop: 3,
-    },
+   name: {
+     color:
+       DropColors.warmWhite,
+     fontFamily:
+       DropTypography.medium,
+     fontSize: 15,
+   },
 
-    chevron: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.light,
-      fontSize: 28,
-    },
-  });
+   metaRow: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     marginTop: 3,
+   },
+
+   username: {
+     color:
+       DropColors.textSecondary,
+     fontFamily:
+       DropTypography.regular,
+     fontSize: 13,
+   },
+
+   metaDot: {
+     color:
+       DropColors.textMuted,
+     fontSize: 13,
+     marginHorizontal: 6,
+   },
+
+   city: {
+     color:
+       DropColors.textMuted,
+     fontFamily:
+       DropTypography.regular,
+     fontSize: 13,
+   },
+
+   chevron: {
+     color:
+       DropColors.textMuted,
+     fontSize: 28,
+     fontWeight: '200',
+     marginLeft: 12,
+   },
+ });

@@ -1359,29 +1359,9 @@ export default function ExploreScreen() {
             </Text>
           </View>
 
-          <Pressable
-            onPress={() => setMode('search')}
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.searchButton,
-              mode === 'search' && styles.searchButtonActive,
-              pressed && styles.searchButtonPressed,
-            ]}
-          >
-            <IconSymbol
-              name="magnifyingglass"
-              size={19}
-              color={
-                mode === 'search'
-                  ? DropColors.warmWhite
-                  : DropColors.textSecondary
-              }
-            />
-          </Pressable>
         </View>
 
-        {mode !== 'search' && (
-          <View style={styles.exploreTabs}>
+        <View style={styles.exploreTabs}>
             <Pressable
               onPress={() => setMode('feed')}
               style={styles.exploreTab}
@@ -1424,7 +1404,6 @@ export default function ExploreScreen() {
               />
             </Pressable>
           </View>
-        )}
       </View>
 
       {mode === 'feed' && (
@@ -1840,7 +1819,11 @@ export default function ExploreScreen() {
       )}
 
       {mode === 'search' && (
-        <ExplorePeopleSearch />
+        <ExplorePeopleSearch
+          onBack={() =>
+            setMode('feed')
+          }
+        />
       )}
 
       {mode === 'map' && (
@@ -1850,6 +1833,28 @@ export default function ExploreScreen() {
             Nearby Drops will appear here.
           </Text>
         </View>
+      )}
+
+      {mode !== 'search' && (
+        <Pressable
+          onPress={() =>
+            setMode('search')
+          }
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.floatingFindButton,
+            pressed &&
+              styles.floatingFindButtonPressed,
+          ]}
+        >
+          <IconSymbol
+            name="magnifyingglass"
+            size={22}
+            color={
+              DropColors.warmWhite
+            }
+          />
+        </Pressable>
       )}
     </View>
   );
@@ -1896,7 +1901,7 @@ const styles =
     },
 
     exploreHeader: {
-      paddingTop: 54,
+      paddingTop: 52,
       paddingHorizontal: 18,
       paddingBottom: 0,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -2210,6 +2215,35 @@ const styles =
       fontSize: 13,
       marginTop: 6,
       textAlign: 'center',
+    },
+
+
+    floatingFindButton: {
+      position: 'absolute',
+      right: 18,
+      bottom: 18,
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor:
+        DropColors.wine,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      zIndex: 20,
+      elevation: 6,
+    },
+
+    floatingFindButtonPressed: {
+      opacity: 0.72,
+      transform: [
+        {
+          scale: 0.97,
+        },
+      ],
     },
 
     emptyContainer: {

@@ -3,7 +3,7 @@ import {
 } from 'react-native';
 
 export const DropColors = {
-  graphite: '#292929',
+  graphite: '#0C0C0C',
   warmWhite: '#FFF2E4',
   wine: '#7D0D0D',
 
