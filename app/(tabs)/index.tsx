@@ -1962,7 +1962,7 @@ const styles =
       paddingHorizontal: 18,
       paddingVertical: 18,
       backgroundColor:
-        'rgba(0,0,0,0.70)',
+        'rgba(0,0,0,0.25)',
       justifyContent:
         'center',
     },
@@ -2040,16 +2040,18 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 18,
-      marginTop: 14,
+      gap: 20,
+      marginTop: 16,
     },
 
     joinButton: {
+      width: 112,
+      height: 40,
       backgroundColor:
         DropColors.wine,
-      paddingHorizontal: 15,
-      paddingVertical: 7,
-      borderRadius: 15,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     requestedButton: {
@@ -2075,7 +2077,8 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
-      fontSize: 13,
+      fontSize: 14,
+      textAlign: 'center',
     },
 
     requestedText: {
@@ -2087,8 +2090,9 @@ const styles =
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.regular,
-      fontSize: 13,
+        DropTypography.medium,
+      fontSize: 15,
+      lineHeight: 20,
     },
 
     likedAction: {
@@ -2103,36 +2107,41 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 12,
-      marginTop: 12,
+      gap: 16,
+      marginTop: 16,
+      minHeight: 32,
     },
 
     ownDrop: {
       color:
         DropColors.textMuted,
       fontFamily:
-        DropTypography.regular,
-      fontSize: 11,
+        DropTypography.medium,
+      fontSize: 13,
     },
 
     ownLikeCount: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.regular,
-      fontSize: 11,
+        DropTypography.medium,
+      fontSize: 13,
     },
 
     deleteDropButton: {
       marginLeft: 'auto',
+      minHeight: 32,
+      paddingHorizontal: 4,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     deleteDropText: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.regular,
-      fontSize: 11,
+        DropTypography.medium,
+      fontSize: 13,
     },
 
     requestsButton: {
@@ -2146,7 +2155,7 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
-      fontSize: 13,
+      fontSize: 15,
     },
 
     floatingCreateButton: {
@@ -2185,13 +2194,13 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.light,
-      fontSize: 44,
+      fontSize: 38,
       lineHeight: 42,
       textAlign: 'center',
       includeFontPadding: false,
       transform: [
         {
-          translateY: 6,
+          translateY: 2,
         },
       ],
     },
