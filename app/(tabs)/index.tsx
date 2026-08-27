@@ -21,6 +21,9 @@ import {
   View,
 } from 'react-native';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
+
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
 import {
@@ -1190,21 +1193,25 @@ export default function HomeScreen() {
           styles.header
         }
       >
-        <View>
+        <View
+          style={
+            styles.headerTextBlock
+          }
+        >
           <Text
             style={
-              styles.logo
+              styles.headerTitle
             }
           >
-            DROP
+            Drop
           </Text>
 
           <Text
             style={
-              styles.feedLabel
+              styles.headerSubtitle
             }
           >
-            FOLLOWING
+            See Drops from people you follow.
           </Text>
         </View>
 
@@ -1790,24 +1797,19 @@ export default function HomeScreen() {
 
       <Pressable
         onPress={() =>
-          router.push(
-            '/create'
-          )
+          router.push('/create')
         }
-        hitSlop={8}
         style={({ pressed }) => [
           styles.floatingCreateButton,
           pressed &&
-            styles.floatingCreateButtonPressed,
+            styles.iconButtonPressed,
         ]}
       >
-        <Text
-          style={
-            styles.floatingCreateText
-          }
-        >
-          +
-        </Text>
+        <Ionicons
+          name="add"
+          size={28}
+          color={DropColors.warmWhite}
+        />
       </Pressable>
     </View>
   );
@@ -1832,38 +1834,37 @@ const styles =
     },
 
     header: {
+      minHeight: 128,
       paddingTop: 52,
       paddingHorizontal: 18,
-      paddingBottom: 13,
+      paddingBottom: 18,
       borderBottomWidth:
         StyleSheet.hairlineWidth,
       borderBottomColor:
         DropColors.border,
-      flexDirection:
-        'row',
-      justifyContent:
-        'space-between',
-      alignItems:
-        'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
     },
 
-    logo: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.semibold,
-      fontSize: 21,
-      letterSpacing: 3,
+    headerTextBlock: {
+      flex: 1,
+      paddingRight: 16,
     },
 
-    feedLabel: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.semibold,
-      fontSize: 9,
-      letterSpacing: 1.35,
-      marginTop: 2,
+    headerTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.light,
+      fontSize: 30,
+      lineHeight: 36,
+    },
+
+    headerSubtitle: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 3,
     },
 
     activityButton: {
@@ -1962,7 +1963,7 @@ const styles =
       paddingHorizontal: 18,
       paddingVertical: 18,
       backgroundColor:
-        'rgba(0,0,0,0.25)',
+        'rgba(0,0,0,0.75)',
       justifyContent:
         'center',
     },
@@ -2040,8 +2041,8 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 20,
-      marginTop: 16,
+      gap: 18,
+      marginTop: 14,
     },
 
     joinButton: {
@@ -2078,6 +2079,7 @@ const styles =
       fontFamily:
         DropTypography.medium,
       fontSize: 14,
+      lineHeight: 18,
       textAlign: 'center',
     },
 
@@ -2090,9 +2092,8 @@ const styles =
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 15,
-      lineHeight: 20,
+        DropTypography.regular,
+      fontSize: 13,
     },
 
     likedAction: {
@@ -2107,41 +2108,36 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 16,
-      marginTop: 16,
-      minHeight: 32,
+      gap: 12,
+      marginTop: 12,
     },
 
     ownDrop: {
       color:
         DropColors.textMuted,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     ownLikeCount: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     deleteDropButton: {
       marginLeft: 'auto',
-      minHeight: 32,
-      paddingHorizontal: 4,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
 
     deleteDropText: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize: 11,
     },
 
     requestsButton: {
@@ -2155,23 +2151,20 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
-      fontSize: 15,
+      fontSize: 13,
     },
 
     floatingCreateButton: {
-      position:
-        'absolute',
+      position: 'absolute',
       right: 18,
       bottom: 18,
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 46,
+      height: 46,
+      borderRadius: 23,
       backgroundColor:
         DropColors.wine,
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
+      alignItems: 'center',
+      justifyContent: 'center',
       borderWidth:
         StyleSheet.hairlineWidth,
       borderColor:
@@ -2179,70 +2172,4 @@ const styles =
       zIndex: 20,
       elevation: 6,
     },
-
-    floatingCreateButtonPressed: {
-      opacity: 0.72,
-      transform: [
-        {
-          scale: 0.97,
-        },
-      ],
-    },
-
-    floatingCreateText: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.light,
-      fontSize: 38,
-      lineHeight: 42,
-      textAlign: 'center',
-      includeFontPadding: false,
-      transform: [
-        {
-          translateY: 2,
-        },
-      ],
-    },
-
-    emptyContainer: {
-      paddingHorizontal: 24,
-      paddingTop: 60,
-      alignItems:
-        'center',
-    },
-
-    emptyTitle: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 16,
-      textAlign: 'center',
-    },
-
-    emptySubtitle: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 13,
-      lineHeight: 19,
-      textAlign: 'center',
-      marginTop: 7,
-    },
-
-    emptyExplore: {
-      marginTop: 20,
-      paddingVertical: 8,
-      paddingHorizontal: 4,
-    },
-
-    emptyExploreText: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
-    },
-  });
+});

@@ -139,23 +139,28 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <Text style={styles.wordmark}>DROP</Text>
-
-          <Pressable
-            onPress={() => router.push('/settings')}
-            hitSlop={12}
-            style={styles.iconButton}
-          >
-            <IconSymbol
-              name="gearshape"
-              size={21}
-              color={DropColors.warmWhite}
-            />
-          </Pressable>
+      <View style={styles.header}>
+        <View style={styles.headerTextBlock}>
+          <Text style={styles.headerTitle}>Your Profile</Text>
+          <Text style={styles.headerSubtitle}>
+            Manage your identity, connections and Drops.
+          </Text>
         </View>
 
+        <Pressable
+          onPress={() => router.push('/settings')}
+          hitSlop={12}
+          style={styles.iconButton}
+        >
+          <IconSymbol
+            name="gearshape"
+            size={21}
+            color={DropColors.warmWhite}
+          />
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.identity}>
           <UserAvatar
             uri={profile.avatar_url}
@@ -247,22 +252,36 @@ const styles = StyleSheet.create({
   },
   scroll: { paddingBottom: 40 },
   header: {
-    paddingTop: 58,
-    paddingHorizontal: 22,
-    paddingBottom: 22,
+    minHeight: 128,
+    paddingTop: 52,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
-  wordmark: {
+  headerTextBlock: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  headerTitle: {
     color: DropColors.warmWhite,
-    fontFamily: DropTypography.bold,
-    fontSize: 18,
-    letterSpacing: 4,
+    fontFamily: DropTypography.light,
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  headerSubtitle: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 3,
   },
   iconButton: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },

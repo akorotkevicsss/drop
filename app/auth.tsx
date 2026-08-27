@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
@@ -146,7 +148,7 @@ export default function AuthScreen() {
             {loading ? (
               <ActivityIndicator color={DropColors.warmWhite} />
             ) : (
-              <Text style={styles.arrow}>→</Text>
+              <Ionicons name="arrow-forward" size={28} color={DropColors.warmWhite} />
             )}
           </Pressable>
         </View>
@@ -229,12 +231,6 @@ const styles = StyleSheet.create({
     backgroundColor: DropColors.wine,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  arrow: {
-    color: DropColors.warmWhite,
-    fontFamily: DropTypography.light,
-    fontSize: 30,
-    lineHeight: 32,
   },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.45 },

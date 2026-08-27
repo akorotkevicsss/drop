@@ -17,6 +17,8 @@ import {
   View,
 } from 'react-native';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { UserAvatar } from '@/components/user-avatar';
 import {
   DropColors,
@@ -454,70 +456,6 @@ export default function InboxScreen() {
               []
             ) as MessageRow[];
 
-          const messageIds =
-            messages.map(
-              (message) =>
-                message.id
-            );
-
-          let hiddenMessageIds =
-            new Set<string>();
-
-          if (
-            messageIds.length >
-            0
-          ) {
-            const {
-              data:
-                hiddenData,
-              error:
-                hiddenError,
-            } =
-              await supabase
-                .from(
-                  'message_hidden_for'
-                )
-                .select(
-                  'message_id'
-                )
-                .eq(
-                  'user_id',
-                  user.id
-                )
-                .in(
-                  'message_id',
-                  messageIds
-                );
-
-            if (
-              hiddenError
-            ) {
-              console.error(
-                'INBOX HIDDEN MESSAGES ERROR:',
-                hiddenError
-              );
-            } else {
-              hiddenMessageIds =
-                new Set(
-                  (
-                    hiddenData ??
-                    []
-                  ).map(
-                    (row) =>
-                      row.message_id as string
-                  )
-                );
-            }
-          }
-
-          const visibleMessages =
-            messages.filter(
-              (message) =>
-                !hiddenMessageIds.has(
-                  message.id
-                )
-            );
-
           const {
             data:
               eventData,
@@ -605,7 +543,7 @@ export default function InboxScreen() {
                     );
 
                 const lastMessage =
-                  visibleMessages.find(
+                  messages.find(
                     (message) =>
                       message.conversation_id ===
                       conversation.id
@@ -806,6 +744,14 @@ export default function InboxScreen() {
           }
         >
           Messages
+        </Text>
+
+        <Text
+          style={
+            styles.subtitle
+          }
+        >
+          Keep conversations and requests in one place.
         </Text>
       </View>
 
@@ -1081,13 +1027,11 @@ export default function InboxScreen() {
             styles.floatingCreateButtonPressed,
         ]}
       >
-        <Text
-          style={
-            styles.floatingCreateText
-          }
-        >
-          +
-        </Text>
+        <Ionicons
+          name="add"
+          size={28}
+          color={DropColors.warmWhite}
+        />
       </Pressable>
     </View>
   );
@@ -1102,27 +1046,39 @@ const styles =
     },
 
     header: {
+      minHeight: 128,
       paddingTop: 52,
       paddingHorizontal: 18,
-      paddingBottom: 13,
+      paddingBottom: 18,
       borderBottomWidth:
         StyleSheet.hairlineWidth,
       borderBottomColor:
         DropColors.border,
+      justifyContent: 'flex-end',
     },
 
     title: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.semibold,
-      fontSize: 25,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.light,
+      fontWeight: '300',
+      fontSize: 30,
+      lineHeight: 36,
+      letterSpacing: 0,
+    },
+
+    subtitle: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontWeight: '400',
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 3,
     },
 
     modeRow: {
+      height: 42,
       flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 18,
+      alignItems: 'stretch',
       borderBottomWidth:
         StyleSheet.hairlineWidth,
       borderBottomColor:
@@ -1130,44 +1086,41 @@ const styles =
     },
 
     modeButton: {
-      minWidth: 82,
-      paddingTop: 13,
+      flex: 1,
       alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
     },
 
     modeText: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 14,
     },
 
     modeTextActive: {
-      color:
-        DropColors.warmWhite,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
     },
 
     modeLine: {
-      width: '100%',
+      position: 'absolute',
+      left: 18,
+      right: 18,
+      bottom: 0,
       height: 1,
-      marginTop: 11,
-      backgroundColor:
-        'transparent',
+      backgroundColor: 'transparent',
     },
 
     modeLineActive: {
-      backgroundColor:
-        DropColors.wine,
+      backgroundColor: DropColors.wine,
     },
 
     modeDivider: {
-      width:
-        StyleSheet.hairlineWidth,
-      height: 17,
-      marginHorizontal: 16,
-      backgroundColor:
-        DropColors.border,
+      width: StyleSheet.hairlineWidth,
+      height: 20,
+      alignSelf: 'center',
+      backgroundColor: DropColors.border,
     },
 
     loadingContainer: {
@@ -1320,14 +1273,13 @@ const styles =
       position: 'absolute',
       right: 18,
       bottom: 18,
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 46,
+      height: 46,
+      borderRadius: 23,
       backgroundColor:
         DropColors.wine,
       alignItems: 'center',
-      justifyContent:
-        'center',
+      justifyContent: 'center',
       borderWidth:
         StyleSheet.hairlineWidth,
       borderColor:
@@ -1345,19 +1297,4 @@ const styles =
       ],
     },
 
-    floatingCreateText: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.light,
-      fontSize: 44,
-      lineHeight: 42,
-      textAlign: 'center',
-      includeFontPadding: false,
-      transform: [
-        {
-          translateY: 6,
-        },
-      ],
-    },
   });

@@ -21,8 +21,9 @@ import {
   View,
 } from 'react-native';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { ExplorePeopleSearch } from '@/components/explore-people-search';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
 import {
   DropColors,
@@ -1372,105 +1373,99 @@ export default function ExploreScreen() {
       >
         <View
           style={
-            styles.exploreTitleRow
+            styles.exploreTitleBlock
           }
         >
-          <View
+          <Text
             style={
-              styles.exploreTitleBlock
+              styles.exploreTitle
             }
           >
-            <Text
-              style={
-                styles.exploreTitle
-              }
-            >
-              Explore
-            </Text>
+            Explore
+          </Text>
 
-            <Text
-              style={
-                styles.exploreSubtitle
-              }
-            >
-              Discover people and Drops around you.
-            </Text>
-          </View>
+          <Text
+            style={
+              styles.exploreSubtitle
+            }
+          >
+            Discover people and Drops around you.
+          </Text>
         </View>
+      </View>
+
+      <View
+        style={
+          styles.exploreTabs
+        }
+      >
+        <Pressable
+          onPress={() =>
+            setMode(
+              'feed'
+            )
+          }
+          style={
+            styles.exploreTab
+          }
+        >
+          <Text
+            style={[
+              styles.exploreTabText,
+              mode ===
+                'feed' &&
+                styles.exploreTabTextActive,
+            ]}
+          >
+            Feed
+          </Text>
+
+          <View
+            style={[
+              styles.exploreTabLine,
+              mode ===
+                'feed' &&
+                styles.exploreTabLineActive,
+            ]}
+          />
+        </Pressable>
 
         <View
           style={
-            styles.exploreTabs
+            styles.exploreTabDivider
+          }
+        />
+
+        <Pressable
+          onPress={() =>
+            setMode(
+              'map'
+            )
+          }
+          style={
+            styles.exploreTab
           }
         >
-          <Pressable
-            onPress={() =>
-              setMode(
-                'feed'
-              )
-            }
-            style={
-              styles.exploreTab
-            }
+          <Text
+            style={[
+              styles.exploreTabText,
+              mode ===
+                'map' &&
+                styles.exploreTabTextActive,
+            ]}
           >
-            <Text
-              style={[
-                styles.exploreTabText,
-                mode ===
-                  'feed' &&
-                  styles.exploreTabTextActive,
-              ]}
-            >
-              Feed
-            </Text>
-
-            <View
-              style={[
-                styles.exploreTabLine,
-                mode ===
-                  'feed' &&
-                  styles.exploreTabLineActive,
-              ]}
-            />
-          </Pressable>
+            Map
+          </Text>
 
           <View
-            style={
-              styles.exploreTabDivider
-            }
+            style={[
+              styles.exploreTabLine,
+              mode ===
+                'map' &&
+                styles.exploreTabLineActive,
+            ]}
           />
-
-          <Pressable
-            onPress={() =>
-              setMode(
-                'map'
-              )
-            }
-            style={
-              styles.exploreTab
-            }
-          >
-            <Text
-              style={[
-                styles.exploreTabText,
-                mode ===
-                  'map' &&
-                  styles.exploreTabTextActive,
-              ]}
-            >
-              Map
-            </Text>
-
-            <View
-              style={[
-                styles.exploreTabLine,
-                mode ===
-                  'map' &&
-                  styles.exploreTabLineActive,
-              ]}
-            />
-          </Pressable>
-        </View>
+        </Pressable>
       </View>
 
       {mode ===
@@ -2065,14 +2060,10 @@ export default function ExploreScreen() {
               styles.floatingFindButtonPressed,
           ]}
         >
-          <IconSymbol
-            name="magnifyingglass"
-            size={
-              22
-            }
-            color={
-              DropColors.warmWhite
-            }
+          <Ionicons
+            name="search"
+            size={26}
+            color={DropColors.warmWhite}
           />
         </Pressable>
       )}
@@ -2099,116 +2090,82 @@ const styles =
     },
 
     exploreHeader: {
-      paddingTop:
-        52,
-      paddingHorizontal:
-        18,
+      minHeight: 128,
+      paddingTop: 52,
+      paddingHorizontal: 18,
+      paddingBottom: 18,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+      borderBottomColor:
+        DropColors.border,
+      justifyContent: 'flex-end',
+    },
+
+    exploreTitleBlock: {
+      flexShrink: 1,
+    },
+
+    exploreTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.light,
+      fontSize: 30,
+      lineHeight: 36,
+    },
+
+    exploreSubtitle: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 3,
+    },
+
+    exploreTabs: {
+      height: 42,
+      flexDirection: 'row',
+      alignItems: 'stretch',
       borderBottomWidth:
         StyleSheet.hairlineWidth,
       borderBottomColor:
         DropColors.border,
     },
 
-    exploreTitleRow: {
-      flexDirection:
-        'row',
-      alignItems:
-        'flex-start',
-      justifyContent:
-        'space-between',
-    },
-
-    exploreTitleBlock: {
-      flex: 1,
-      paddingRight:
-        16,
-    },
-
-    exploreTitle: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.light,
-      fontSize:
-        30,
-    },
-
-    exploreSubtitle: {
-      color:
-        DropColors.textSecondary,
-      fontFamily:
-        DropTypography.regular,
-      fontSize:
-        12,
-      marginTop:
-        3,
-    },
-
-    exploreTabs: {
-      flexDirection:
-        'row',
-      alignItems:
-        'stretch',
-      marginTop:
-        22,
-    },
-
     exploreTab: {
       flex: 1,
-      minHeight:
-        42,
-      alignItems:
-        'center',
-      justifyContent:
-        'flex-end',
-      paddingBottom:
-        11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
     },
 
     exploreTabText: {
-      color:
-        DropColors.textSecondary,
-      fontFamily:
-        DropTypography.regular,
-      fontSize:
-        14,
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 14,
     },
 
     exploreTabTextActive: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
     },
 
     exploreTabLine: {
-      position:
-        'absolute',
+      position: 'absolute',
       left: 18,
       right: 18,
       bottom: 0,
-      height:
-        StyleSheet.hairlineWidth,
-      backgroundColor:
-        'transparent',
+      height: 1,
+      backgroundColor: 'transparent',
     },
 
     exploreTabLineActive: {
-      height: 1,
-      backgroundColor:
-        DropColors.wine,
+      backgroundColor: DropColors.wine,
     },
 
     exploreTabDivider: {
-      width:
-        StyleSheet.hairlineWidth,
+      width: StyleSheet.hairlineWidth,
       height: 20,
-      alignSelf:
-        'center',
-      marginBottom:
-        10,
-      backgroundColor:
-        DropColors.border,
+      alignSelf: 'center',
+      backgroundColor: DropColors.border,
     },
 
     feedContent: {
@@ -2300,7 +2257,7 @@ const styles =
       paddingVertical:
         18,
       backgroundColor:
-        'rgba(0,0,0,0.70)',
+        'rgba(0,0,0,0.75)',
       justifyContent:
         'center',
     },
@@ -2396,8 +2353,10 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 20,
-      marginTop: 16,
+      gap:
+        18,
+      marginTop:
+        14,
     },
 
     joinButton: {
@@ -2434,6 +2393,7 @@ const styles =
       fontFamily:
         DropTypography.medium,
       fontSize: 14,
+      lineHeight: 18,
       textAlign: 'center',
     },
 
@@ -2441,9 +2401,9 @@ const styles =
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 15,
-      lineHeight: 20,
+        DropTypography.regular,
+      fontSize:
+        14,
     },
 
     likedAction: {
@@ -2458,41 +2418,42 @@ const styles =
         'row',
       alignItems:
         'center',
-      gap: 16,
-      marginTop: 16,
-      minHeight: 32,
+      gap:
+        14,
+      marginTop:
+        14,
     },
 
     ownDrop: {
       color:
         DropColors.textMuted,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize:
+        12,
     },
 
     ownLikeCount: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize:
+        12,
     },
 
     deleteDropButton: {
-      marginLeft: 'auto',
-      minHeight: 32,
-      paddingHorizontal: 4,
-      alignItems: 'center',
-      justifyContent: 'center',
+      marginLeft:
+        'auto',
     },
 
     deleteDropText: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.medium,
-      fontSize: 13,
+        DropTypography.regular,
+      fontSize:
+        12,
     },
 
     requestsButton: {
@@ -2507,7 +2468,8 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
-      fontSize: 15,
+      fontSize:
+        14,
     },
 
     mapPlaceholder: {
