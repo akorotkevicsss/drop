@@ -1,393 +1,241 @@
+import { useState } from 'react';
 import {
-  useState,
-} from 'react';
-
-import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 
-import {
-  supabase,
-} from '@/lib/supabase';
+import { DropColors, DropTypography } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 
 export default function AuthScreen() {
-  const [
-    email,
-    setEmail,
-  ] =
-    useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
 
-  const [
-    password,
-    setPassword,
-  ] =
-    useState('');
+  const handleAuth = async () => {
+    const cleanEmail = email.trim();
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(false);
+    if (!cleanEmail || !password.trim()) {
+      Alert.alert('Missing data', 'Enter email and password.');
+      return;
+    }
 
-  const [
-    mode,
-    setMode,
-  ] =
-    useState<
-      'signin' |
-      'signup'
-    >(
-      'signin'
-    );
+    try {
+      setLoading(true);
 
-  const handleAuth =
-    async () => {
-      const cleanEmail =
-        email.trim();
+      if (mode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+        });
 
-      if (
-        !cleanEmail ||
-        !password.trim()
-      ) {
-        Alert.alert(
-          'Missing data',
-          'Enter email and password.'
-        );
+        if (error) {
+          Alert.alert('Sign up error', error.message);
+          return;
+        }
 
+        if (!data.session) {
+          Alert.alert(
+            'Account created',
+            'Your account was created successfully. Sign in to continue.'
+          );
+          setMode('signin');
+        }
         return;
       }
 
-      try {
-        setLoading(
-          true
-        );
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
 
-        if (
-          mode ===
-          'signup'
-        ) {
-          const {
-            data,
-            error,
-          } =
-            await supabase.auth.signUp({
-              email:
-                cleanEmail,
-
-              password,
-            });
-
-          if (error) {
-            Alert.alert(
-              'Sign up error',
-              error.message
-            );
-
-            return;
-          }
-
-          if (
-            !data.session
-          ) {
-            Alert.alert(
-              'Account created',
-              'Your account was created successfully. Sign in to continue.'
-            );
-
-            setMode(
-              'signin'
-            );
-          }
-
-          return;
-        }
-
-        const {
-          data,
-          error,
-        } =
-          await supabase.auth
-            .signInWithPassword({
-              email:
-                cleanEmail,
-
-              password,
-            });
-
-        if (error) {
-          Alert.alert(
-            'Sign in error',
-            error.message
-          );
-
-          return;
-        }
-
-        if (
-          !data.session
-        ) {
-          Alert.alert(
-            'Sign in error',
-            'No session was returned.'
-          );
-        }
-
-        /*
-         * RootLayout owns routing:
-         * auth -> profile -> onboarding -> app.
-         */
-      } catch (error) {
-        console.error(
-          'AUTH ERROR:',
-          error
-        );
-
-        Alert.alert(
-          'Error',
-          'Something went wrong.'
-        );
-      } finally {
-        setLoading(
-          false
-        );
+      if (error) {
+        Alert.alert('Sign in error', error.message);
+        return;
       }
-    };
+
+      if (!data.session) {
+        Alert.alert('Sign in error', 'No session was returned.');
+      }
+    } catch (error) {
+      console.error('AUTH ERROR:', error);
+      Alert.alert('Error', 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
-      style={
-        styles.container
-      }
-      behavior={
-        Platform.OS ===
-        'ios'
-          ? 'padding'
-          : undefined
-      }
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View
-        style={
-          styles.content
-        }
-      >
-        <Text
-          style={
-            styles.logo
-          }
-        >
-          DROP
+      <View style={styles.top}>
+        <Text style={styles.logo}>DROP</Text>
+        <Text style={styles.micro}>INTENT OVER REACTION.</Text>
+      </View>
+
+      <View style={styles.content}>
+        <Text style={styles.eyebrow}>
+          {mode === 'signin' ? 'WELCOME BACK' : 'CREATE ACCOUNT'}
         </Text>
 
-        <Text
-          style={
-            styles.subtitle
-          }
-        >
-          Intent over reaction.
+        <Text style={styles.title}>
+          {mode === 'signin'
+            ? 'Pick up where you left off.'
+            : 'Start with an intention.'}
         </Text>
 
-        <Text
-          style={
-            styles.modeTitle
-          }
-        >
-          {mode ===
-          'signin'
-            ? 'Welcome back'
-            : 'Start with an intention'}
-        </Text>
+        <View style={styles.fields}>
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={DropColors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
 
-        <TextInput
-          style={
-            styles.input
-          }
-          placeholder="Email"
-          placeholderTextColor="#666666"
-          autoCapitalize="none"
-          autoCorrect={
-            false
-          }
-          keyboardType="email-address"
-          value={
-            email
-          }
-          onChangeText={
-            setEmail
-          }
-        />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={DropColors.textMuted}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={password}
+            onChangeText={setPassword}
+            onSubmitEditing={handleAuth}
+          />
+        </View>
 
-        <TextInput
-          style={
-            styles.input
-          }
-          placeholder="Password"
-          placeholderTextColor="#666666"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={
-            false
-          }
-          value={
-            password
-          }
-          onChangeText={
-            setPassword
-          }
-          onSubmitEditing={
-            handleAuth
-          }
-        />
-
-        <TouchableOpacity
-          style={[
-            styles.mainButton,
-
-            loading &&
-              styles.mainButtonDisabled,
-          ]}
-          onPress={
-            handleAuth
-          }
-          disabled={
-            loading
-          }
-        >
-          <Text
-            style={
-              styles.mainButtonText
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() =>
+              setMode((current) =>
+                current === 'signin' ? 'signup' : 'signin'
+              )
             }
+            disabled={loading}
+            hitSlop={10}
           >
-            {loading
-              ? 'Please wait...'
-              : mode ===
-                  'signin'
-                ? 'Sign In'
-                : 'Create account'}
-          </Text>
-        </TouchableOpacity>
+            <Text style={styles.switchText}>
+              {mode === 'signin' ? 'Create account' : 'I have an account'}
+            </Text>
+          </Pressable>
 
-        <TouchableOpacity
-          style={
-            styles.switchButton
-          }
-          onPress={() =>
-            setMode(
-              (current) =>
-                current ===
-                'signin'
-                  ? 'signup'
-                  : 'signin'
-            )
-          }
-          disabled={
-            loading
-          }
-        >
-          <Text
-            style={
-              styles.switchText
-            }
+          <Pressable
+            style={({ pressed }) => [
+              styles.arrowButton,
+              pressed && styles.pressed,
+              loading && styles.disabled,
+            ]}
+            onPress={handleAuth}
+            disabled={loading}
           >
-            {mode ===
-            'signin'
-              ? "Don't have an account? Sign Up"
-              : 'Already have an account? Sign In'}
-          </Text>
-        </TouchableOpacity>
+            {loading ? (
+              <ActivityIndicator color={DropColors.warmWhite} />
+            ) : (
+              <Text style={styles.arrow}>→</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        '#000000',
-    },
-
-    content: {
-      flex: 1,
-      justifyContent:
-        'center',
-      paddingHorizontal: 28,
-    },
-
-    logo: {
-      color: '#FFFFFF',
-      fontSize: 40,
-      fontWeight:
-        '700',
-      letterSpacing: 6,
-      textAlign:
-        'center',
-    },
-
-    subtitle: {
-      color: '#666666',
-      fontSize: 15,
-      textAlign:
-        'center',
-      marginTop: 10,
-      marginBottom: 36,
-    },
-
-    modeTitle: {
-      color: '#FFFFFF',
-      fontSize: 17,
-      fontWeight:
-        '600',
-      marginBottom: 14,
-    },
-
-    input: {
-      backgroundColor:
-        '#151515',
-      color: '#FFFFFF',
-      borderRadius: 14,
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-      fontSize: 16,
-      marginBottom: 12,
-    },
-
-    mainButton: {
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 24,
-      paddingVertical: 14,
-      alignItems:
-        'center',
-      marginTop: 8,
-    },
-
-    mainButtonDisabled: {
-      opacity: 0.5,
-    },
-
-    mainButtonText: {
-      color: '#000000',
-      fontSize: 15,
-      fontWeight:
-        '600',
-    },
-
-    switchButton: {
-      paddingVertical: 18,
-      alignItems:
-        'center',
-    },
-
-    switchText: {
-      color: '#777777',
-      fontSize: 14,
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: DropColors.graphite,
+    paddingHorizontal: 26,
+  },
+  top: {
+    paddingTop: 58,
+  },
+  logo: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.bold,
+    fontSize: 19,
+    letterSpacing: 4,
+  },
+  micro: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.medium,
+    fontSize: 9,
+    letterSpacing: 1.8,
+    marginTop: 8,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: 70,
+  },
+  eyebrow: {
+    color: DropColors.wine,
+    fontFamily: DropTypography.bold,
+    fontSize: 10,
+    letterSpacing: 2,
+    marginBottom: 14,
+  },
+  title: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.bold,
+    fontSize: 34,
+    lineHeight: 39,
+    maxWidth: 330,
+    marginBottom: 34,
+  },
+  fields: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+  },
+  input: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.regular,
+    fontSize: 16,
+    minHeight: 58,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+  },
+  actionRow: {
+    marginTop: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switchText: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontSize: 14,
+  },
+  arrowButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: DropColors.wine,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrow: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.light,
+    fontSize: 30,
+    lineHeight: 32,
+  },
+  pressed: { opacity: 0.72 },
+  disabled: { opacity: 0.45 },
+});

@@ -3,12 +3,7 @@ import {
   router,
   useLocalSearchParams,
 } from 'expo-router';
-
-import {
-  useEffect,
-  useState,
-} from 'react';
-
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +15,7 @@ import {
 } from 'react-native';
 
 import { UserAvatar } from '@/components/user-avatar';
+import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 type PublicProfile = {
@@ -29,14 +25,11 @@ type PublicProfile = {
   bio: string | null;
   city: string | null;
   avatar_url: string | null;
-
   followers_count: number;
   following_count: number;
-
   is_following: boolean;
   is_followed_by: boolean;
   is_mutual: boolean;
-
   can_view_followers: boolean;
   can_view_following: boolean;
 };
@@ -48,314 +41,215 @@ type Drop = {
   created_at: string;
 };
 
-function formatDropTime(
-  createdAt: string
-) {
-  const created =
-    new Date(createdAt);
-
-  const now =
-    new Date();
-
-  const difference =
-    now.getTime() -
-    created.getTime();
-
-  const minutes =
-    Math.floor(
-      difference /
-        (1000 * 60)
-    );
-
-  if (minutes < 1) {
-    return 'now';
-  }
-
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-
-  const hours =
-    Math.floor(
-      minutes / 60
-    );
-
-  if (hours < 24) {
-    return `${hours}h`;
-  }
-
-  const days =
-    Math.floor(
-      hours / 24
-    );
-
-  return `${days}d`;
+function formatDropTime(createdAt: string) {
+  const minutes = Math.floor(
+    (Date.now() - new Date(createdAt).getTime()) / 60000
+  );
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 export default function UserProfileScreen() {
-  const { username } =
-    useLocalSearchParams<{
-      username: string;
-    }>();
+  const { username } = useLocalSearchParams<{ username: string }>();
+  const cleanUsername = username?.replace('@', '') ?? '';
 
-  const cleanUsername =
-    username?.replace(
-      '@',
-      ''
-    ) ?? '';
-
-  const [
-    profile,
-    setProfile,
-  ] =
-    useState<
-      PublicProfile | null
-    >(null);
-
-  const [
-    userDrops,
-    setUserDrops,
-  ] =
-    useState<Drop[]>([]);
-
-  const [
-    currentUserId,
-    setCurrentUserId,
-  ] =
-    useState<string | null>(
-      null
-    );
-
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(true);
-
-  const [
-    followLoading,
-    setFollowLoading,
-  ] =
-    useState(false);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [userDrops, setUserDrops] = useState<Drop[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [messageLoading, setMessageLoading] = useState(false);
 
   useEffect(() => {
     loadProfile();
   }, [cleanUsername]);
 
-  const loadProfile =
-    async () => {
-      if (!cleanUsername) {
+  const loadProfile = async () => {
+    if (!cleanUsername) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        Alert.alert('Error', 'Could not find the current user.');
+        return;
+      }
+
+      setCurrentUserId(user.id);
+
+      const { data, error } = await supabase.rpc(
+        'get_public_profile',
+        { target_username: cleanUsername }
+      );
+
+      if (error) {
+        console.error('PUBLIC PROFILE RPC ERROR:', error);
+        Alert.alert('Error', 'Could not load this profile.');
+        return;
+      }
+
+      const loadedProfile = (data?.[0] ?? null) as PublicProfile | null;
+
+      if (!loadedProfile) {
         setProfile(null);
-        setLoading(false);
+        setUserDrops([]);
         return;
       }
 
-      try {
-        setLoading(true);
+      setProfile(loadedProfile);
 
-        const {
-          data: { user },
-          error: userError,
-        } =
-          await supabase.auth.getUser();
+      const { data: dropData, error: dropsError } = await supabase
+        .from('drops')
+        .select('id, text, city, created_at')
+        .eq('author_id', loadedProfile.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
 
-        if (
-          userError ||
-          !user
-        ) {
-          Alert.alert(
-            'Error',
-            'Could not find the current user.'
-          );
-
-          return;
-        }
-
-        setCurrentUserId(
-          user.id
-        );
-
-        const {
-          data,
-          error,
-        } =
-          await supabase.rpc(
-            'get_public_profile',
-            {
-              target_username:
-                cleanUsername,
-            }
-          );
-
-        if (error) {
-          console.error(
-            'PUBLIC PROFILE RPC ERROR:',
-            error
-          );
-
-          Alert.alert(
-            'Error',
-            'Could not load this profile.'
-          );
-
-          return;
-        }
-
-        const loadedProfile =
-          (
-            data?.[0] ??
-            null
-          ) as PublicProfile | null;
-
-        if (!loadedProfile) {
-          setProfile(null);
-          setUserDrops([]);
-          return;
-        }
-
-        setProfile(
-          loadedProfile
-        );
-
-        const {
-          data: dropData,
-          error: dropsError,
-        } =
-          await supabase
-            .from('drops')
-            .select(`
-              id,
-              text,
-              city,
-              created_at
-            `)
-            .eq(
-              'author_id',
-              loadedProfile.id
-            )
-            .is(
-              'deleted_at',
-              null
-            )
-            .order(
-              'created_at',
-              {
-                ascending:
-                  false,
-              }
-            );
-
-        if (dropsError) {
-          console.error(
-            'PUBLIC PROFILE DROPS ERROR:',
-            dropsError
-          );
-        } else {
-          setUserDrops(
-            dropData ?? []
-          );
-        }
-      } catch (error) {
-        console.error(
-          'PUBLIC PROFILE LOAD ERROR:',
-          error
-        );
-      } finally {
-        setLoading(false);
+      if (dropsError) {
+        console.error('PUBLIC PROFILE DROPS ERROR:', dropsError);
+      } else {
+        setUserDrops(dropData ?? []);
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const toggleFollow =
-    async () => {
-      if (
-        !profile ||
-        !currentUserId ||
-        currentUserId ===
-          profile.id ||
-        followLoading
-      ) {
-        return;
-      }
-
-      try {
-        setFollowLoading(
-          true
-        );
-
-        if (
-          profile.is_following
-        ) {
-          const {
-            error,
-          } =
-            await supabase
-              .from('follows')
-              .delete()
-              .eq(
-                'follower_id',
-                currentUserId
-              )
-              .eq(
-                'following_id',
-                profile.id
-              );
-
-          if (error) {
-            Alert.alert(
-              'Error',
-              'Could not unfollow this user.'
-            );
-
-            return;
-          }
-        } else {
-          const {
-            error,
-          } =
-            await supabase
-              .from('follows')
-              .insert({
-                follower_id:
-                  currentUserId,
-
-                following_id:
-                  profile.id,
-              });
-
-          if (error) {
-            Alert.alert(
-              'Error',
-              'Could not follow this user.'
-            );
-
-            return;
-          }
-        }
-
-        /*
-         * Reload through the RPC.
-         * This updates:
-         * count + mutual + Bio/City privacy
-         * in one shot.
-         */
-        await loadProfile();
-      } finally {
-        setFollowLoading(
-          false
-        );
-      }
-    };
-
-  const openConnections = (
-    type:
-      | 'followers'
-      | 'following'
-  ) => {
+  const toggleFollow = async () => {
     if (
-      !profile?.username
+      !profile ||
+      !currentUserId ||
+      currentUserId === profile.id ||
+      followLoading
     ) {
       return;
     }
+
+    try {
+      setFollowLoading(true);
+
+      if (profile.is_following) {
+        const { error } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', currentUserId)
+          .eq('following_id', profile.id);
+
+        if (error) {
+          Alert.alert('Error', 'Could not unfollow this user.');
+          return;
+        }
+      } else {
+        const { error } = await supabase.from('follows').insert({
+          follower_id: currentUserId,
+          following_id: profile.id,
+        });
+
+        if (error) {
+          Alert.alert('Error', 'Could not follow this user.');
+          return;
+        }
+      }
+
+      await loadProfile();
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const openMessage = async () => {
+    if (!profile || !currentUserId || messageLoading) return;
+
+    try {
+      setMessageLoading(true);
+
+      const { data: existing, error: existingError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('conversation_type', 'direct')
+        .or(
+          `and(author_id.eq.${currentUserId},participant_id.eq.${profile.id}),and(author_id.eq.${profile.id},participant_id.eq.${currentUserId})`
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error('PROFILE FIND DIRECT ERROR:', existingError);
+      }
+
+      if (existing?.id) {
+        router.push(`/chat/${existing.id}`);
+        return;
+      }
+
+      const { data: conversation, error: conversationError } =
+        await supabase
+          .from('conversations')
+          .insert({
+            author_id: currentUserId,
+            participant_id: profile.id,
+            conversation_type: 'direct',
+            created_by: currentUserId,
+            is_request: true,
+            source: 'direct',
+            drop_id: null,
+            join_request_id: null,
+          })
+          .select('id')
+          .single();
+
+      if (conversationError || !conversation) {
+        console.error(
+          'PROFILE CREATE REQUEST ERROR:',
+          conversationError
+        );
+        Alert.alert('Error', 'Could not send this message request.');
+        return;
+      }
+
+      const { error: memberError } = await supabase
+        .from('conversation_members')
+        .insert([
+          {
+            conversation_id: conversation.id,
+            user_id: currentUserId,
+            is_admin: true,
+            last_read_at: new Date().toISOString(),
+          },
+          {
+            conversation_id: conversation.id,
+            user_id: profile.id,
+            is_admin: false,
+          },
+        ]);
+
+      if (memberError && memberError.code !== '23505') {
+        console.error(
+          'PROFILE CREATE REQUEST MEMBERS ERROR:',
+          memberError
+        );
+      }
+
+      router.push(`/chat/${conversation.id}`);
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  const openConnections = (type: 'followers' | 'following') => {
+    if (!profile?.username) return;
 
     const allowed =
       type === 'followers'
@@ -369,7 +263,6 @@ export default function UserProfileScreen() {
           : 'Following is private',
         'This user has hidden this list.'
       );
-
       return;
     }
 
@@ -382,539 +275,311 @@ export default function UserProfileScreen() {
 
   if (loading) {
     return (
-      <View
-        style={
-          styles.loadingContainer
-        }
-      >
-        <ActivityIndicator />
+      <View style={styles.center}>
+        <ActivityIndicator color={DropColors.warmWhite} />
       </View>
     );
   }
 
   if (!profile) {
     return (
-      <View
-        style={
-          styles.container
-        }
-      >
-        <Stack.Screen
-          options={{
-            headerShown: false,
-          }}
-        />
-
-        <Pressable
-          style={
-            styles.backArea
-          }
-          onPress={() =>
-            router.back()
-          }
-        >
-          <Text
-            style={
-              styles.backButton
-            }
-          >
-            ‹
-          </Text>
-        </Pressable>
-
-        <Text
-          style={
-            styles.notFound
-          }
-        >
-          User not found.
-        </Text>
+      <View style={styles.center}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Text style={styles.muted}>User not found.</Text>
       </View>
     );
   }
 
-  const displayName =
-    profile.display_name ||
-    'Unnamed user';
-
-  const isOwner =
-    currentUserId ===
-    profile.id;
+  const displayName = profile.display_name || 'Unnamed user';
+  const isOwner = currentUserId === profile.id;
 
   return (
-    <View
-      style={
-        styles.container
-      }
-    >
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+    <View style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <View
-        style={
-          styles.header
-        }
-      >
-        <Pressable
-          onPress={() =>
-            router.back()
-          }
-        >
-          <Text
-            style={
-              styles.backButton
-            }
-          >
-            ‹
-          </Text>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Text style={styles.back}>‹</Text>
         </Pressable>
-
-        <Text
-          style={
-            styles.headerTitle
-          }
-        >
-          @{profile.username}
-        </Text>
-
-        <View
-          style={
-            styles.headerSpacer
-          }
-        />
+        <Text style={styles.wordmark}>DROP</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView>
-        <View
-          style={
-            styles.profile
-          }
-        >
-          <View
-            style={
-              styles.topRow
-            }
-          >
-            <UserAvatar
-              uri={
-                profile.avatar_url
-              }
-              name={
-                displayName
-              }
-              size={80}
-            />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.identity}>
+          <UserAvatar
+            uri={profile.avatar_url}
+            name={displayName}
+            size={92}
+          />
 
-            {!isOwner && (
-              <Pressable
-                style={[
-                  styles.followButton,
-
-                  profile.is_following &&
-                    styles.followingButton,
-                ]}
-                onPress={
-                  toggleFollow
-                }
-                disabled={
-                  followLoading
-                }
-              >
-                <Text
-                  style={[
-                    styles.followText,
-
-                    profile.is_following &&
-                      styles.followingText,
-                  ]}
-                >
-                  {followLoading
-                    ? '...'
-                    : profile.is_mutual
-                      ? 'Mutual'
-                      : profile.is_following
-                        ? 'Following'
-                        : 'Follow'}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-
-          <Text
-            style={
-              styles.name
-            }
-          >
-            {displayName}
-          </Text>
-
-          <Text
-            style={
-              styles.username
-            }
-          >
-            @{profile.username}
-          </Text>
-
-          {!!profile.bio && (
-            <Text
-              style={
-                styles.bio
-              }
-            >
-              {profile.bio}
-            </Text>
-          )}
-
-          {!!profile.city && (
-            <Text
-              style={
-                styles.city
-              }
-            >
-              {profile.city}
-            </Text>
-          )}
-
-          <View
-            style={
-              styles.stats
-            }
-          >
-            {(isOwner ||
-              profile.can_view_followers) && (
-              <Pressable
-                style={
-                  styles.stat
-                }
-                onPress={() =>
-                  openConnections(
-                    'followers'
-                  )
-                }
-              >
-                <Text
-                  style={
-                    styles.statNumber
-                  }
-                >
-                  {
-                    profile.followers_count
-                  }
-                </Text>
-
-                <Text
-                  style={
-                    styles.statLabel
-                  }
-                >
-                  Followers
-                </Text>
-              </Pressable>
-            )}
-
-            {(isOwner ||
-              profile.can_view_following) && (
-              <Pressable
-                style={
-                  styles.stat
-                }
-                onPress={() =>
-                  openConnections(
-                    'following'
-                  )
-                }
-              >
-                <Text
-                  style={
-                    styles.statNumber
-                  }
-                >
-                  {
-                    profile.following_count
-                  }
-                </Text>
-
-                <Text
-                  style={
-                    styles.statLabel
-                  }
-                >
-                  Following
-                </Text>
-              </Pressable>
-            )}
-
-            <View
-              style={
-                styles.stat
-              }
-            >
-              <Text
-                style={
-                  styles.statNumber
-                }
-              >
-                {
-                  userDrops.length
-                }
-              </Text>
-
-              <Text
-                style={
-                  styles.statLabel
-                }
-              >
-                Drops
-              </Text>
-            </View>
+          <View style={styles.nameBlock}>
+            <Text style={styles.name}>{displayName}</Text>
+            <Text style={styles.username}>@{profile.username}</Text>
           </View>
         </View>
 
-        <Text
-          style={
-            styles.sectionTitle
-          }
-        >
-          ACTIVE DROPS
-        </Text>
+        {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+        {!!profile.city && (
+          <Text style={styles.city}>{profile.city.toUpperCase()}</Text>
+        )}
 
-        {userDrops.length ===
-        0 ? (
-          <Text
-            style={
-              styles.emptyText
-            }
-          >
-            No active Drops.
-          </Text>
+        <View style={styles.stats}>
+          {(isOwner || profile.can_view_followers) && (
+            <Pressable
+              style={styles.stat}
+              onPress={() => openConnections('followers')}
+            >
+              <Text style={styles.statNumber}>
+                {profile.followers_count}
+              </Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </Pressable>
+          )}
+
+          <View style={styles.statDivider} />
+
+          {(isOwner || profile.can_view_following) && (
+            <Pressable
+              style={styles.stat}
+              onPress={() => openConnections('following')}
+            >
+              <Text style={styles.statNumber}>
+                {profile.following_count}
+              </Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </Pressable>
+          )}
+
+          <View style={styles.statDivider} />
+
+          <View style={styles.stat}>
+            <Text style={styles.statNumber}>{userDrops.length}</Text>
+            <Text style={styles.statLabel}>Drops</Text>
+          </View>
+        </View>
+
+        {!isOwner && (
+          <View style={styles.actions}>
+            <Pressable
+              style={styles.action}
+              onPress={toggleFollow}
+              disabled={followLoading}
+            >
+              <Text style={styles.actionLabel}>
+                {followLoading
+                  ? '...'
+                  : profile.is_mutual
+                    ? 'Mutual'
+                    : profile.is_following
+                      ? 'Following'
+                      : 'Follow'}
+              </Text>
+            </Pressable>
+
+            <View style={styles.actionDivider} />
+
+            <Pressable
+              style={styles.action}
+              onPress={openMessage}
+              disabled={messageLoading}
+            >
+              <Text style={styles.messageLabel}>
+                {messageLoading ? '...' : 'Message'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>ACTIVE DROPS</Text>
+          <Text style={styles.sectionCount}>{userDrops.length}</Text>
+        </View>
+
+        {userDrops.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.muted}>No active Drops.</Text>
+          </View>
         ) : (
-          userDrops.map(
-            (drop) => (
-              <View
-                key={
-                  drop.id
-                }
-                style={
-                  styles.drop
-                }
-              >
-                <Text
-                  style={
-                    styles.dropText
-                  }
-                >
-                  {drop.text}
-                </Text>
-
-                <Text
-                  style={
-                    styles.dropMeta
-                  }
-                >
-                  {drop.city
-                    ? `${drop.city} · `
-                    : ''}
-
-                  {formatDropTime(
-                    drop.created_at
-                  )}
-                </Text>
-              </View>
-            )
-          )
+          userDrops.map((drop) => (
+            <View key={drop.id} style={styles.drop}>
+              <Text style={styles.dropText}>{drop.text}</Text>
+              <Text style={styles.dropMeta}>
+                {drop.city ? `${drop.city} · ` : ''}
+                {formatDropTime(drop.created_at)}
+              </Text>
+            </View>
+          ))
         )}
       </ScrollView>
     </View>
   );
 }
 
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        '#000000',
-    },
-
-    loadingContainer: {
-      flex: 1,
-      backgroundColor:
-        '#000000',
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-    },
-
-    header: {
-      paddingTop: 58,
-      paddingHorizontal: 20,
-      paddingBottom: 14,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-
-    backArea: {
-      paddingTop: 60,
-      paddingLeft: 20,
-    },
-
-    backButton: {
-      color: '#FFFFFF',
-      fontSize: 40,
-      lineHeight: 40,
-      fontWeight: '200',
-    },
-
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-
-    headerSpacer: {
-      width: 24,
-    },
-
-    profile: {
-      paddingHorizontal: 20,
-      paddingVertical: 24,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
-    },
-
-    topRow: {
-      flexDirection: 'row',
-      justifyContent:
-        'space-between',
-      alignItems: 'center',
-    },
-
-    followButton: {
-      backgroundColor:
-        '#FFFFFF',
-      paddingHorizontal: 24,
-      paddingVertical: 10,
-      borderRadius: 22,
-      minWidth: 100,
-      alignItems: 'center',
-    },
-
-    followingButton: {
-      backgroundColor:
-        '#171717',
-      borderWidth: 1,
-      borderColor:
-        '#444444',
-    },
-
-    followText: {
-      color: '#000000',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-
-    followingText: {
-      color: '#FFFFFF',
-    },
-
-    name: {
-      color: '#FFFFFF',
-      fontSize: 24,
-      fontWeight: '700',
-      marginTop: 20,
-    },
-
-    username: {
-      color: '#666666',
-      fontSize: 14,
-      marginTop: 3,
-    },
-
-    bio: {
-      color: '#CCCCCC',
-      fontSize: 15,
-      lineHeight: 21,
-      marginTop: 16,
-    },
-
-    city: {
-      color: '#666666',
-      fontSize: 14,
-      marginTop: 8,
-    },
-
-    stats: {
-      flexDirection: 'row',
-      gap: 30,
-      marginTop: 22,
-    },
-
-    stat: {
-      flexDirection: 'row',
-      gap: 5,
-    },
-
-    statNumber: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-
-    statLabel: {
-      color: '#666666',
-      fontSize: 14,
-    },
-
-    sectionTitle: {
-      color: '#555555',
-      fontSize: 11,
-      fontWeight: '700',
-      letterSpacing: 1.5,
-      paddingHorizontal: 20,
-      paddingTop: 22,
-      paddingBottom: 8,
-    },
-
-    drop: {
-      paddingHorizontal: 20,
-      paddingVertical: 18,
-      borderBottomWidth: 1,
-      borderBottomColor:
-        '#1A1A1A',
-    },
-
-    dropText: {
-      color: '#FFFFFF',
-      fontSize: 18,
-      lineHeight: 25,
-    },
-
-    dropMeta: {
-      color: '#666666',
-      fontSize: 13,
-      marginTop: 8,
-    },
-
-    emptyText: {
-      color: '#555555',
-      fontSize: 14,
-      padding: 20,
-    },
-
-    notFound: {
-      color: '#FFFFFF',
-      textAlign: 'center',
-      marginTop: 80,
-    },
-  });
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: DropColors.graphite },
+  center: {
+    flex: 1,
+    backgroundColor: DropColors.graphite,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  header: {
+    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  back: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.light,
+    fontSize: 38,
+    lineHeight: 38,
+  },
+  wordmark: {
+    flex: 1,
+    textAlign: 'center',
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.bold,
+    fontSize: 16,
+    letterSpacing: 4,
+  },
+  headerSpacer: { width: 24 },
+  scroll: { paddingBottom: 40 },
+  identity: {
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  nameBlock: { flex: 1 },
+  name: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.bold,
+    fontSize: 26,
+  },
+  username: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 14,
+    marginTop: 3,
+  },
+  bio: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontSize: 15,
+    lineHeight: 21,
+    paddingHorizontal: 22,
+    marginTop: 22,
+  },
+  city: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.medium,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    paddingHorizontal: 22,
+    marginTop: 10,
+  },
+  stats: {
+    marginTop: 28,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    flexDirection: 'row',
+    minHeight: 72,
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: DropColors.border,
+    marginVertical: 16,
+  },
+  statNumber: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 16,
+  },
+  statLabel: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  actions: {
+    marginHorizontal: 22,
+    marginTop: 22,
+    height: 52,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    flexDirection: 'row',
+  },
+  action: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: DropColors.border,
+    marginVertical: 13,
+  },
+  actionLabel: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 14,
+  },
+  messageLabel: {
+    color: DropColors.wine,
+    fontFamily: DropTypography.semibold,
+    fontSize: 14,
+  },
+  sectionHeader: {
+    paddingHorizontal: 22,
+    paddingTop: 30,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.bold,
+    fontSize: 10,
+    letterSpacing: 1.8,
+  },
+  sectionCount: {
+    color: DropColors.wine,
+    fontFamily: DropTypography.medium,
+    fontSize: 11,
+  },
+  drop: {
+    paddingHorizontal: 22,
+    paddingVertical: 17,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+  },
+  dropText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.regular,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  dropMeta: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+    marginTop: 7,
+  },
+  empty: { paddingHorizontal: 22, paddingTop: 26 },
+  muted: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 14,
+  },
+});
