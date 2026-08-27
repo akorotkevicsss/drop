@@ -17,8 +17,6 @@ import {
   View,
 } from 'react-native';
 
-import Ionicons from '@expo/vector-icons/Ionicons';
-
 import { UserAvatar } from '@/components/user-avatar';
 import {
   DropColors,
@@ -64,6 +62,7 @@ type MessageRow = {
   message_type:
     | 'text'
     | 'image'
+    | 'video'
     | 'voice';
   created_at: string;
 };
@@ -155,6 +154,13 @@ function messagePreview(
     'image'
   ) {
     return 'Photo';
+  }
+
+  if (
+    message.message_type ===
+    'video'
+  ) {
+    return 'Video';
   }
 
   if (
@@ -1027,11 +1033,13 @@ export default function InboxScreen() {
             styles.floatingCreateButtonPressed,
         ]}
       >
-        <Ionicons
-          name="add"
-          size={28}
-          color={DropColors.warmWhite}
-        />
+        <Text
+          style={
+            styles.floatingCreateText
+          }
+        >
+          +
+        </Text>
       </Pressable>
     </View>
   );
@@ -1076,7 +1084,7 @@ const styles =
     },
 
     modeRow: {
-      height: 42,
+      height: 58,
       flexDirection: 'row',
       alignItems: 'stretch',
       borderBottomWidth:
@@ -1273,13 +1281,14 @@ const styles =
       position: 'absolute',
       right: 18,
       bottom: 18,
-      width: 46,
-      height: 46,
-      borderRadius: 23,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       backgroundColor:
         DropColors.wine,
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent:
+        'center',
       borderWidth:
         StyleSheet.hairlineWidth,
       borderColor:
@@ -1297,4 +1306,19 @@ const styles =
       ],
     },
 
+    floatingCreateText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.light,
+      fontSize: 44,
+      lineHeight: 42,
+      textAlign: 'center',
+      includeFontPadding: false,
+      transform: [
+        {
+          translateY: 6,
+        },
+      ],
+    },
   });

@@ -16,6 +16,11 @@ import {
   router,
   useLocalSearchParams,
 } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import {
+  VideoView,
+  useVideoPlayer,
+} from 'expo-video';
 
 import {
   useEffect,
@@ -43,6 +48,7 @@ import {
   View
 } from 'react-native';
 
+import { PhotoEditor } from '@/components/photo-editor';
 import { UserAvatar } from '@/components/user-avatar';
 import {
   DropColors,
@@ -74,6 +80,7 @@ type ConversationMember = {
 type MessageType =
   | 'text'
   | 'image'
+  | 'video'
   | 'voice';
 
 type Message = {
@@ -116,8 +123,22 @@ type TimelineItem =
 
 type PendingImage = {
   uri: string;
-  base64: string;
   mimeType: string;
+  width: number;
+  height: number;
+};
+
+type PendingVideo = {
+  uri: string;
+  mimeType: string;
+  fileName: string;
+  fileSize: number;
+};
+
+type EditorSource = {
+  uri: string;
+  width: number;
+  height: number;
 };
 
 function formatMessageTime(
@@ -551,6 +572,133 @@ function VoicePlayer({
   );
 }
 
+function VideoPreview({
+  url,
+  onOpen,
+}: {
+  url: string;
+  onOpen: () => void;
+}) {
+  const player =
+    useVideoPlayer(
+      url,
+      (
+        instance
+      ) => {
+        try {
+          instance.pause();
+        } catch {
+          // Preview stays paused.
+        }
+      }
+    );
+
+  return (
+    <Pressable
+      onPress={
+        onOpen
+      }
+      style={
+        styles.videoPreview
+      }
+    >
+      <View
+        pointerEvents="none"
+        style={
+          StyleSheet.absoluteFillObject
+        }
+      >
+        <VideoView
+          player={
+            player
+          }
+          style={
+            StyleSheet.absoluteFillObject
+          }
+          nativeControls={
+            false
+          }
+          allowsFullscreen={
+            false
+          }
+          contentFit="contain"
+        />
+      </View>
+
+      <View
+        pointerEvents="none"
+        style={
+          styles.videoPreviewPlay
+        }
+      >
+        <MaterialIcons
+          name="play-arrow"
+          size={34}
+          color={
+            DropColors.warmWhite
+          }
+        />
+      </View>
+    </Pressable>
+  );
+}
+
+function FullscreenVideo({
+  url,
+}: {
+  url: string;
+}) {
+  const player =
+    useVideoPlayer(
+      url,
+      (
+        instance
+      ) => {
+        try {
+          instance.play();
+        } catch (
+          error
+        ) {
+          console.warn(
+            'VIDEO AUTOPLAY ERROR:',
+            error
+          );
+        }
+      }
+    );
+
+  useEffect(
+    () => {
+      return () => {
+        try {
+          player.pause();
+        } catch {
+          // Player can already be released while modal closes.
+        }
+      };
+    },
+    [
+      player,
+    ]
+  );
+
+  return (
+    <VideoView
+      player={
+        player
+      }
+      style={
+        styles.fullscreenVideo
+      }
+      nativeControls
+      allowsFullscreen={
+        false
+      }
+      contentFit="contain"
+    />
+  );
+}
+
 function SwipeMessage({
   children,
   onReply,
@@ -803,6 +951,22 @@ export default function ChatScreen() {
     >(null);
 
   const [
+    pendingVideo,
+    setPendingVideo,
+  ] =
+    useState<
+      PendingVideo | null
+    >(null);
+
+  const [
+    photoEditorSource,
+    setPhotoEditorSource,
+  ] =
+    useState<
+      EditorSource | null
+    >(null);
+
+  const [
     loading,
     setLoading,
   ] =
@@ -865,6 +1029,54 @@ export default function ChatScreen() {
     useState<
       string | null
     >(null);
+
+  const [
+    videoViewerUrl,
+    setVideoViewerUrl,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  useEffect(
+    () => {
+      if (
+        !videoViewerUrl
+      ) {
+        return;
+      }
+
+      ScreenOrientation.unlockAsync()
+        .catch(
+          (
+            error
+          ) => {
+            console.warn(
+              'VIDEO ORIENTATION UNLOCK ERROR:',
+              error
+            );
+          }
+        );
+
+      return () => {
+        ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.PORTRAIT_UP
+        ).catch(
+          (
+            error
+          ) => {
+            console.warn(
+              'VIDEO ORIENTATION RESTORE ERROR:',
+              error
+            );
+          }
+        );
+      };
+    },
+    [
+      videoViewerUrl,
+    ]
+  );
 
   const [
     photoViewerAspectRatio,
@@ -1823,9 +2035,11 @@ export default function ChatScreen() {
       return path;
     };
 
-  const handlePickImage =
+  const handlePickMedia =
     async () => {
       if (
+        sending ||
+        recorderState.isRecording ||
         editingMessageId
       ) {
         return;
@@ -1838,26 +2052,25 @@ export default function ChatScreen() {
         !permission.granted
       ) {
         Alert.alert(
-          'Photo access required',
-          'Allow access to choose a photo.'
+          'Media access required',
+          'Allow access to your photo and video library.'
         );
         return;
       }
 
       const result =
-        await ImagePicker.launchImageLibraryAsync(
-          {
-            mediaTypes: [
-              'images',
-            ],
-            allowsEditing:
-              true,
-            quality:
-              0.82,
-            base64:
-              true,
-          }
-        );
+        await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: [
+            'images',
+            'videos',
+          ],
+          allowsEditing:
+            false,
+          quality:
+            1,
+          base64:
+            false,
+        });
 
       if (
         result.canceled
@@ -1869,23 +2082,86 @@ export default function ChatScreen() {
         result.assets[0];
 
       if (
-        !asset?.base64
+        !asset?.uri
       ) {
-        Alert.alert(
-          'Photo error',
-          'Could not prepare this image.'
-        );
         return;
       }
 
-      setPendingImage({
+      const isVideo =
+        asset.type ===
+          'video' ||
+        asset.mimeType
+          ?.toLowerCase()
+          .startsWith(
+            'video/'
+          );
+
+      if (
+        isVideo
+      ) {
+        const file =
+          new File(
+            asset.uri
+          );
+
+        const fileSize =
+          asset.fileSize ??
+          file.size ??
+          0;
+
+        const maxBytes =
+          50 *
+          1024 *
+          1024;
+
+        if (
+          fileSize >
+          maxBytes
+        ) {
+          Alert.alert(
+            'Video is too large',
+            'Choose a video up to 50 MB.'
+          );
+          return;
+        }
+
+        setPendingImage(
+          null
+        );
+
+        setPhotoEditorSource(
+          null
+        );
+
+        setPendingVideo({
+          uri:
+            asset.uri,
+          mimeType:
+            asset.mimeType ??
+            file.type ??
+            'video/mp4',
+          fileName:
+            asset.fileName ??
+            `video-${Date.now()}.mp4`,
+          fileSize,
+        });
+
+        return;
+      }
+
+      setPendingVideo(
+        null
+      );
+
+      setPhotoEditorSource({
         uri:
           asset.uri,
-        base64:
-          asset.base64,
-        mimeType:
-          asset.mimeType ??
-          'image/jpeg',
+        width:
+          asset.width ||
+          1,
+        height:
+          asset.height ||
+          1,
       });
     };
 
@@ -1936,6 +2212,9 @@ export default function ChatScreen() {
         message
       );
       setPendingImage(
+        null
+      );
+      setPendingVideo(
         null
       );
       setEditingMessageId(
@@ -1989,6 +2268,9 @@ export default function ChatScreen() {
         null
       );
       setPendingImage(
+        null
+      );
+      setPendingVideo(
         null
       );
       setActiveMessageMenuId(
@@ -2180,7 +2462,8 @@ export default function ChatScreen() {
 
       if (
         !text.trim() &&
-        !pendingImage
+        !pendingImage &&
+        !pendingVideo
       ) {
         return;
       }
@@ -2194,6 +2477,57 @@ export default function ChatScreen() {
           editingMessageId
         ) {
           await saveEditedMessage();
+          return;
+        }
+
+        if (
+          pendingVideo
+        ) {
+          const file =
+            new File(
+              pendingVideo.uri
+            );
+
+          const arrayBuffer =
+            await file.arrayBuffer();
+
+          const extension =
+            (
+              file.extension ||
+              '.mp4'
+            ).replace(
+              '.',
+              ''
+            );
+
+          const path =
+            `${currentUserId}/${conversation.id}/${Date.now()}.${extension}`;
+
+          await uploadArrayBuffer({
+            bucket:
+              'message-videos',
+            path,
+            arrayBuffer,
+            contentType:
+              pendingVideo.mimeType,
+          });
+
+          const success =
+            await insertMessage({
+              messageType:
+                'video',
+              mediaPath:
+                path,
+            });
+
+          if (
+            success
+          ) {
+            setPendingVideo(
+              null
+            );
+          }
+
           return;
         }
 
@@ -2217,9 +2551,9 @@ export default function ChatScreen() {
               'message-images',
             path,
             arrayBuffer:
-              base64ToArrayBuffer(
-                pendingImage.base64
-              ),
+              await new File(
+                pendingImage.uri
+              ).arrayBuffer(),
             contentType:
               pendingImage.mimeType,
           });
@@ -2409,7 +2743,8 @@ export default function ChatScreen() {
       if (
         sending ||
         text.trim() ||
-        pendingImage
+        pendingImage ||
+        pendingVideo
       ) {
         return;
       }
@@ -2595,7 +2930,10 @@ export default function ChatScreen() {
             message.message_type ===
             'voice'
               ? 'message-voice'
-              : 'message-images';
+              : message.message_type ===
+                  'video'
+                ? 'message-videos'
+                : 'message-images';
 
           await supabase.storage
             .from(
@@ -2788,6 +3126,15 @@ export default function ChatScreen() {
       ) {
         preview =
           'Voice message';
+      }
+
+      if (
+        original.message_type ===
+        'video'
+      ) {
+        preview =
+          original.text ||
+          'Video';
       }
 
       return (
@@ -3360,7 +3707,10 @@ export default function ChatScreen() {
                         message.message_type ===
                         'voice'
                           ? 'message-voice'
-                          : 'message-images'
+                          : message.message_type ===
+                              'video'
+                            ? 'message-videos'
+                            : 'message-images'
                       )
                       .getPublicUrl(
                         message.media_path
@@ -3434,6 +3784,16 @@ export default function ChatScreen() {
                             1
                         );
                         setPhotoViewerUrl(
+                          mediaUrl
+                        );
+                      }
+
+                      if (
+                        message.message_type ===
+                          'video' &&
+                        mediaUrl
+                      ) {
+                        setVideoViewerUrl(
                           mediaUrl
                         );
                       }
@@ -3737,6 +4097,21 @@ export default function ChatScreen() {
                         <>
 
                           {message.message_type ===
+                            'video' &&
+                            mediaUrl && (
+                              <VideoPreview
+                                url={
+                                  mediaUrl
+                                }
+                                onOpen={() =>
+                                  setVideoViewerUrl(
+                                    mediaUrl
+                                  )
+                                }
+                              />
+                            )}
+
+                          {message.message_type ===
                             'voice' &&
                             mediaUrl && (
                               <VoicePlayer
@@ -3900,10 +4275,14 @@ export default function ChatScreen() {
                 'voice'
                   ? 'Voice message'
                   : replyingTo.message_type ===
-                      'image'
+                      'video'
                     ? replyingTo.text ||
-                      'Photo'
-                    : replyingTo.text}
+                      'Video'
+                    : replyingTo.message_type ===
+                        'image'
+                      ? replyingTo.text ||
+                        'Photo'
+                      : replyingTo.text}
               </Text>
             </View>
 
@@ -3911,6 +4290,69 @@ export default function ChatScreen() {
               hitSlop={10}
               onPress={() =>
                 setReplyingTo(
+                  null
+                )
+              }
+            >
+              <MaterialIcons
+                name="close"
+                size={20}
+                color={
+                  DropColors.textSecondary
+                }
+              />
+            </Pressable>
+          </View>
+        )}
+
+        {!!pendingVideo && (
+          <View
+            style={
+              styles.pendingImageRow
+            }
+          >
+            <View
+              style={
+                styles.pendingVideoIcon
+              }
+            >
+              <MaterialIcons
+                name="videocam"
+                size={24}
+                color={
+                  DropColors.warmWhite
+                }
+              />
+            </View>
+
+            <View
+              style={
+                styles.pendingImageText
+              }
+            >
+              <Text
+                style={
+                  styles.pendingImageTitle
+                }
+              >
+                Video attached
+              </Text>
+
+              <Text
+                style={
+                  styles.pendingImageSubtitle
+                }
+              >
+                {(pendingVideo.fileSize /
+                  1024 /
+                  1024).toFixed(1)} MB · max 50 MB
+              </Text>
+            </View>
+
+            <Pressable
+              hitSlop={10}
+              onPress={() =>
+                setPendingVideo(
                   null
                 )
               }
@@ -3990,7 +4432,7 @@ export default function ChatScreen() {
         >
           <Pressable
             onPress={
-              handlePickImage
+              handlePickMedia
             }
             disabled={
               sending ||
@@ -4006,7 +4448,8 @@ export default function ChatScreen() {
               name="attach-file"
               size={22}
               color={
-                pendingImage
+                pendingImage ||
+                pendingVideo
                   ? DropColors.warmWhite
                   : DropColors.textSecondary
               }
@@ -4048,7 +4491,8 @@ export default function ChatScreen() {
           />
 
           {text.trim() ||
-          pendingImage ? (
+          pendingImage ||
+          pendingVideo ? (
             <Pressable
               onPress={
                 handleSend
@@ -4160,6 +4604,125 @@ export default function ChatScreen() {
           )}
         </View>
       </Pressable>
+
+      <Modal
+        visible={
+          !!photoEditorSource
+        }
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() =>
+          setPhotoEditorSource(
+            null
+          )
+        }
+      >
+        {!!photoEditorSource && (
+          <PhotoEditor
+            uri={
+              photoEditorSource.uri
+            }
+            width={
+              photoEditorSource.width
+            }
+            height={
+              photoEditorSource.height
+            }
+            onCancel={() =>
+              setPhotoEditorSource(
+                null
+              )
+            }
+            onDone={(result) => {
+              setPendingVideo(
+                null
+              );
+              setPendingImage({
+                uri:
+                  result.uri,
+                mimeType:
+                  result.mimeType,
+                width:
+                  result.width,
+                height:
+                  result.height,
+              });
+              setPhotoEditorSource(
+                null
+              );
+            }}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        visible={
+          !!videoViewerUrl
+        }
+        transparent
+        animationType="fade"
+        supportedOrientations={[
+          'portrait',
+          'portrait-upside-down',
+          'landscape',
+          'landscape-left',
+          'landscape-right',
+        ]}
+        onRequestClose={() =>
+          setVideoViewerUrl(
+            null
+          )
+        }
+      >
+        <Pressable
+          style={
+            styles.videoViewerBackdrop
+          }
+          onPress={() =>
+            setVideoViewerUrl(
+              null
+            )
+          }
+        >
+          <Pressable
+            hitSlop={12}
+            style={
+              styles.photoViewerClose
+            }
+            onPress={(event) => {
+              event.stopPropagation();
+              setVideoViewerUrl(
+                null
+              );
+            }}
+          >
+            <MaterialIcons
+              name="close"
+              size={30}
+              color={
+                DropColors.warmWhite
+              }
+            />
+          </Pressable>
+
+          {!!videoViewerUrl && (
+            <Pressable
+              style={
+                styles.fullscreenVideoFrame
+              }
+              onPress={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <FullscreenVideo
+                url={
+                  videoViewerUrl
+                }
+              />
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={
@@ -5074,6 +5637,57 @@ const styles =
         '#6A6A6A',
     },
 
+    videoPreview: {
+      width: 270,
+      maxWidth: '100%',
+      aspectRatio: 16 / 9,
+      borderRadius: 12,
+      overflow: 'hidden',
+      marginBottom: 7,
+      backgroundColor:
+        '#000',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    videoPreviewPlay: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor:
+        'rgba(0,0,0,0.52)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    videoViewerBackdrop: {
+      flex: 1,
+      backgroundColor:
+        'rgba(0,0,0,0.86)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+    },
+
+    fullscreenVideoFrame: {
+      width: '100%',
+      height: '100%',
+      alignSelf: 'center',
+      backgroundColor:
+        '#000',
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    fullscreenVideo: {
+      width: '100%',
+      height: '100%',
+      backgroundColor:
+        '#000',
+    },
+
     messageImage: {
       width: '100%',
       maxHeight: 360,
@@ -5295,6 +5909,16 @@ const styles =
       width: 48,
       height: 48,
       borderRadius: 9,
+    },
+
+    pendingVideoIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 10,
+      backgroundColor:
+        DropColors.surfaceElevated,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     pendingImageText: {
