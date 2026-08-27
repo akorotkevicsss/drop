@@ -8,6 +8,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
+import * as Clipboard from 'expo-clipboard';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -27,6 +28,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -84,6 +86,7 @@ type Message = {
   voice_duration_ms: number | null;
   reply_to_message_id: string | null;
   deleted_for_everyone_at: string | null;
+  edited_at: string | null;
   created_at: string;
 };
 
@@ -848,6 +851,73 @@ export default function ChatScreen() {
     useState(false);
 
   const [
+    activeMessageMenuId,
+    setActiveMessageMenuId,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    photoViewerUrl,
+    setPhotoViewerUrl,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    photoViewerAspectRatio,
+    setPhotoViewerAspectRatio,
+  ] =
+    useState(1);
+
+  const [
+    imageAspectRatios,
+    setImageAspectRatios,
+  ] =
+    useState<
+      Record<
+        string,
+        number
+      >
+    >({});
+
+  const messageBubbleRefs =
+    useRef<
+      Record<
+        string,
+        View | null
+      >
+    >({});
+
+  const [
+    messageMenuAnchor,
+    setMessageMenuAnchor,
+  ] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const [
+    messageMenuSize,
+    setMessageMenuSize,
+  ] = useState({
+    width: 230,
+    height: 0,
+  });
+
+  const [
+    editingMessageId,
+    setEditingMessageId,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
     recordingLocked,
     setRecordingLocked,
   ] =
@@ -953,7 +1023,8 @@ export default function ChatScreen() {
               );
 
               markConversationRead(
-                conversation.id
+                conversation.id,
+                currentUserId
               );
             }
           )
@@ -1022,8 +1093,18 @@ export default function ChatScreen() {
         !conversation?.id ||
         conversation.conversation_type !==
           'direct' ||
-        !directOtherUser?.id
+        !currentUserId
       ) {
+        return;
+      }
+
+      const otherUserId =
+        conversation.author_id ===
+        currentUserId
+          ? conversation.participant_id
+          : conversation.author_id;
+
+      if (!otherUserId) {
         return;
       }
 
@@ -1046,13 +1127,11 @@ export default function ChatScreen() {
               )
               .eq(
                 'user_id',
-                directOtherUser.id
+                otherUserId
               )
               .maybeSingle();
 
-          if (
-            error
-          ) {
+          if (error) {
             console.error(
               'LOAD OTHER MEMBER READ ERROR:',
               error
@@ -1071,7 +1150,7 @@ export default function ChatScreen() {
       const channel =
         supabase
           .channel(
-            `member-read-${conversation.id}-${directOtherUser.id}`
+            `member-read-${conversation.id}-${otherUserId}`
           )
           .on(
             'postgres_changes',
@@ -1096,7 +1175,7 @@ export default function ChatScreen() {
 
               if (
                 row.user_id !==
-                directOtherUser.id
+                otherUserId
               ) {
                 return;
               }
@@ -1118,9 +1197,12 @@ export default function ChatScreen() {
     [
       conversation?.id,
       conversation?.conversation_type,
-      directOtherUser?.id,
+      conversation?.author_id,
+      conversation?.participant_id,
+      currentUserId,
     ]
   );
+
 
   const conversationProfiles =
     useMemo(
@@ -1263,6 +1345,13 @@ export default function ChatScreen() {
         messages,
       ]
     );
+
+  const activeMessageMenuMessage =
+    activeMessageMenuId
+      ? messageMap.get(
+          activeMessageMenuId
+        ) ?? null
+      : null;
 
   const scrollToBottom =
     (
@@ -1464,7 +1553,8 @@ export default function ChatScreen() {
             user.id
           ),
           markConversationRead(
-            conversationData.id
+            conversationData.id,
+            user.id
           ),
           markConversationNotificationsRead(
             conversationData.id,
@@ -1500,6 +1590,7 @@ export default function ChatScreen() {
             voice_duration_ms,
             reply_to_message_id,
             deleted_for_everyone_at,
+            edited_at,
             created_at
           `)
           .eq(
@@ -1626,54 +1717,44 @@ export default function ChatScreen() {
       );
     };
 
-  const markConversationRead =
+      const markConversationRead =
     async (
-      conversationId: string
+      conversationId: string,
+      userId?: string
     ) => {
-      const now =
-        new Date().toISOString();
+      const effectiveUserId =
+        userId ??
+        currentUserId;
+
+      if (!effectiveUserId) {
+        return;
+      }
 
       const {
         error,
       } =
-        await supabase.rpc(
-          'mark_conversation_read',
-          {
-            target_conversation_id:
-              conversationId,
-          }
-        );
+        await supabase
+          .from(
+            'conversation_members'
+          )
+          .update({
+            last_read_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            'conversation_id',
+            conversationId
+          )
+          .eq(
+            'user_id',
+            effectiveUserId
+          );
 
-      if (
-        error
-      ) {
+      if (error) {
         console.error(
           'MARK MEMBER READ ERROR:',
           error
         );
-      }
-
-      if (
-        currentUserId
-      ) {
-        await supabase
-          .from(
-            'conversation_reads'
-          )
-          .upsert(
-            {
-              conversation_id:
-                conversationId,
-              user_id:
-                currentUserId,
-              last_read_at:
-                now,
-            },
-            {
-              onConflict:
-                'conversation_id,user_id',
-            }
-          );
       }
     };
 
@@ -1744,6 +1825,12 @@ export default function ChatScreen() {
 
   const handlePickImage =
     async () => {
+      if (
+        editingMessageId
+      ) {
+        return;
+      }
+
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -1800,6 +1887,213 @@ export default function ChatScreen() {
           asset.mimeType ??
           'image/jpeg',
       });
+    };
+
+  const openMessageMenu =
+    (
+      message: Message
+    ) => {
+      if (
+        message.deleted_for_everyone_at
+      ) {
+        return;
+      }
+
+      const bubble =
+        messageBubbleRefs.current[
+          message.id
+        ];
+
+      if (!bubble) {
+        return;
+      }
+
+      bubble.measureInWindow(
+        (
+          x,
+          y,
+          width,
+          height
+        ) => {
+          setMessageMenuAnchor({
+            x,
+            y,
+            width,
+            height,
+          });
+          setActiveMessageMenuId(
+            message.id
+          );
+        }
+      );
+    };
+
+  const handleMessageReply =
+    (
+      message: Message
+    ) => {
+      setReplyingTo(
+        message
+      );
+      setPendingImage(
+        null
+      );
+      setEditingMessageId(
+        null
+      );
+      setActiveMessageMenuId(
+        null
+      );
+    };
+
+  const handleMessageCopy =
+    async (
+      message: Message
+    ) => {
+      if (
+        !message.text
+      ) {
+        return;
+      }
+
+      await Clipboard.setStringAsync(
+        message.text
+      );
+
+      setActiveMessageMenuId(
+        null
+      );
+    };
+
+  const handleMessageEdit =
+    (
+      message: Message
+    ) => {
+      if (
+        message.sender_id !==
+          currentUserId ||
+        message.message_type !==
+          'text' ||
+        !message.text
+      ) {
+        return;
+      }
+
+      setEditingMessageId(
+        message.id
+      );
+      setText(
+        message.text
+      );
+      setReplyingTo(
+        null
+      );
+      setPendingImage(
+        null
+      );
+      setActiveMessageMenuId(
+        null
+      );
+    };
+
+  const handleMessageDelete =
+    (
+      message: Message
+    ) => {
+      setSelectedMessageIds(
+        new Set([
+          message.id,
+        ])
+      );
+      setDeleteForEveryone(
+        false
+      );
+      setSelectionMode(
+        false
+      );
+      setActiveMessageMenuId(
+        null
+      );
+      setDeleteModalVisible(
+        true
+      );
+    };
+
+  const handleMessageSelect =
+    (
+      message: Message
+    ) => {
+      setActiveMessageMenuId(
+        null
+      );
+      setSelectedMessageIds(
+        new Set([
+          message.id,
+        ])
+      );
+      setSelectionMode(
+        true
+      );
+    };
+
+  const saveEditedMessage =
+    async () => {
+      if (
+        !editingMessageId ||
+        !currentUserId ||
+        !conversation
+      ) {
+        return false;
+      }
+
+      const trimmed =
+        text.trim();
+
+      if (
+        !trimmed
+      ) {
+        return false;
+      }
+
+      const {
+        error,
+      } =
+        await supabase.rpc(
+          'edit_own_message',
+          {
+            target_message_id:
+              editingMessageId,
+            new_text:
+              trimmed,
+          }
+        );
+
+      if (
+        error
+      ) {
+        console.error(
+          'EDIT MESSAGE ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Error',
+          error.message
+        );
+
+        return false;
+      }
+
+      setEditingMessageId(
+        null
+      );
+      setText('');
+
+      await loadMessages(
+        conversation.id
+      );
+
+      return true;
     };
 
   const insertMessage =
@@ -1895,6 +2189,13 @@ export default function ChatScreen() {
         setSending(
           true
         );
+
+        if (
+          editingMessageId
+        ) {
+          await saveEditedMessage();
+          return;
+        }
 
         if (
           pendingImage
@@ -2535,6 +2836,90 @@ export default function ChatScreen() {
     );
   }
 
+  const screen =
+    Dimensions.get(
+      'window'
+    );
+
+  const menuGap = 8;
+  const menuMargin = 12;
+  const menuWidth =
+    messageMenuSize.width ||
+    230;
+  const menuHeight =
+    messageMenuSize.height ||
+    220;
+
+  const menuLeft =
+    messageMenuAnchor
+      ? Math.min(
+          Math.max(
+            menuMargin,
+            messageMenuAnchor.x
+          ),
+          screen.width -
+            menuWidth -
+            menuMargin
+        )
+      : menuMargin;
+
+  const spaceBelow =
+    messageMenuAnchor
+      ? screen.height -
+        (
+          messageMenuAnchor.y +
+          messageMenuAnchor.height
+        )
+      : 0;
+
+  const menuTop =
+    messageMenuAnchor
+      ? spaceBelow >=
+        menuHeight +
+          menuGap +
+          menuMargin
+        ? messageMenuAnchor.y +
+          messageMenuAnchor.height +
+          menuGap
+        : Math.max(
+            menuMargin,
+            messageMenuAnchor.y -
+              menuHeight -
+              menuGap
+          )
+      : menuMargin;
+
+
+  const viewerMaxWidth =
+    screen.width * 0.94;
+
+  const viewerMaxHeight =
+    screen.height * 0.82;
+
+  let viewerImageWidth =
+    viewerMaxWidth;
+
+  let viewerImageHeight =
+    viewerImageWidth /
+    Math.max(
+      photoViewerAspectRatio,
+      0.01
+    );
+
+  if (
+    viewerImageHeight >
+    viewerMaxHeight
+  ) {
+    viewerImageHeight =
+      viewerMaxHeight;
+    viewerImageWidth =
+      viewerImageHeight *
+      Math.max(
+        photoViewerAspectRatio,
+        0.01
+      );
+  }
+
   return (
     <KeyboardAvoidingView
       style={
@@ -2879,8 +3264,11 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={
             false
           }
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="never"
           keyboardDismissMode="on-drag"
+          onTouchStart={() => {
+            Keyboard.dismiss();
+          }}
           onContentSizeChange={() =>
             scrollToBottom(
               false
@@ -2991,14 +3379,11 @@ export default function ChatScreen() {
                     deleted ||
                     selectionMode
                   }
-                  onReply={() => {
-                    setReplyingTo(
+                  onReply={() =>
+                    handleMessageReply(
                       message
-                    );
-                    setPendingImage(
-                      null
-                    );
-                  }}
+                    )
+                  }
                 >
                   <Pressable
                     onLongPress={() => {
@@ -3008,22 +3393,53 @@ export default function ChatScreen() {
                         return;
                       }
 
-                      setSelectionMode(
-                        true
-                      );
-                    }}
-                    onPress={() => {
                       if (
-                        selectionMode &&
-                        !deleted
+                        selectionMode
                       ) {
                         toggleMessageSelection(
                           message.id
                         );
+                        return;
+                      }
+
+                      openMessageMenu(
+                        message
+                      );
+                    }}
+                    onPress={() => {
+                      if (
+                        deleted
+                      ) {
+                        return;
+                      }
+
+                      if (
+                        selectionMode
+                      ) {
+                        toggleMessageSelection(
+                          message.id
+                        );
+                        return;
+                      }
+
+                      if (
+                        message.message_type ===
+                          'image' &&
+                        mediaUrl
+                      ) {
+                        setPhotoViewerAspectRatio(
+                          imageAspectRatios[
+                            message.id
+                          ] ??
+                            1
+                        );
+                        setPhotoViewerUrl(
+                          mediaUrl
+                        );
                       }
                     }}
                     delayLongPress={
-                      140
+                      260
                     }
                     hitSlop={{
                       top: 6,
@@ -3033,13 +3449,12 @@ export default function ChatScreen() {
                     }}
                     style={[
                       styles.messageRow,
+                      selectionMode &&
+                        styles.messageRowSelectionMode,
                       mine
                         ? styles.messageRowMine
                         : styles.messageRowOther,
-                      selectedMessageIds.has(
-                        message.id
-                      ) &&
-                        styles.messageRowSelected,
+
                     ]}
                   >
                     {selectionMode && (
@@ -3099,12 +3514,192 @@ export default function ChatScreen() {
                         </View>
                       )}
 
+                    {message.message_type ===
+                      'image' &&
+                    mediaUrl &&
+                    !deleted ? (
+                      <View
+                        ref={(node) => {
+                          messageBubbleRefs.current[
+                            message.id
+                          ] = node;
+                        }}
+                        collapsable={false}
+                        style={[
+                          styles.photoMessageContainer,
+                          mine
+                            ? styles.photoMessageContainerMine
+                            : styles.photoMessageContainerOther,
+                          selectionMode &&
+                            selectedMessageIds.has(
+                              message.id
+                            ) &&
+                            (mine
+                              ? styles.photoMessageSelectedMine
+                              : styles.photoMessageSelectedOther),
+                        ]}
+                      >
+                        <Pressable
+                          onPress={() => {
+                            if (
+                              selectionMode
+                            ) {
+                              toggleMessageSelection(
+                                message.id
+                              );
+                              return;
+                            }
+
+                            setPhotoViewerAspectRatio(
+                              imageAspectRatios[
+                                message.id
+                              ] ??
+                                1
+                            );
+                            setPhotoViewerUrl(
+                              mediaUrl
+                            );
+                          }}
+                          onLongPress={() => {
+                            if (
+                              selectionMode
+                            ) {
+                              toggleMessageSelection(
+                                message.id
+                              );
+                              return;
+                            }
+
+                            openMessageMenu(
+                              message
+                            );
+                          }}
+                          delayLongPress={260}
+                        >
+                          <Image
+                            source={{
+                              uri:
+                                mediaUrl,
+                            }}
+                            style={[
+                              styles.messageImage,
+                              {
+                                aspectRatio:
+                                  imageAspectRatios[
+                                    message.id
+                                  ] ??
+                                  1,
+                              },
+                            ]}
+                            resizeMode="contain"
+                            onLoad={(event) => {
+                              const {
+                                width,
+                                height,
+                              } =
+                                event.nativeEvent.source;
+
+                              if (
+                                width >
+                                  0 &&
+                                height >
+                                  0
+                              ) {
+                                setImageAspectRatios(
+                                  (
+                                    current
+                                  ) => ({
+                                    ...current,
+                                    [message.id]:
+                                      width /
+                                      height,
+                                  })
+                                );
+                              }
+                            }}
+                          />
+
+
+                        </Pressable>
+
+                        {!!message.text && (
+                          <Text
+                            style={[
+                              styles.photoCaption,
+                              mine
+                                ? styles.photoCaptionMine
+                                : styles.photoCaptionOther,
+                            ]}
+                          >
+                            {message.text}
+                          </Text>
+                        )}
+
+                        <View
+                          style={
+                            styles.photoBubbleMetaRow
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.photoMetaText
+                            }
+                          >
+                            {formatMessageTime(
+                              message.created_at
+                            )}
+                          </Text>
+
+                          {mine && (
+                            <Text
+                              style={
+                                styles.photoMetaText
+                              }
+                            >
+                              {conversation
+                                ?.conversation_type ===
+                                'direct' &&
+                              otherUserLastReadAt &&
+                              new Date(
+                                otherUserLastReadAt
+                              ).getTime() >=
+                                new Date(
+                                  message.created_at
+                                ).getTime()
+                                ? '✓✓'
+                                : '✓'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    ) : (
                     <View
                       style={[
-                        styles.bubble,
+                        styles.messageColumn,
+                        mine
+                          ? styles.messageColumnMine
+                          : styles.messageColumnOther,
+                      ]}
+                    >
+                      <View
+                        ref={(node) => {
+                          messageBubbleRefs.current[
+                            message.id
+                          ] = node;
+                        }}
+                        collapsable={false}
+                        style={[
+                          styles.bubble,
                         mine
                           ? styles.bubbleMine
                           : styles.bubbleOther,
+                        selectionMode &&
+                          selectedMessageIds.has(
+                            message.id
+                          ) &&
+                          (mine
+                            ? styles.bubbleMineSelected
+                            : styles.bubbleOtherSelected),
                         deleted &&
                           styles.bubbleDeleted,
                       ]}
@@ -3140,20 +3735,6 @@ export default function ChatScreen() {
                         </Text>
                       ) : (
                         <>
-                          {message.message_type ===
-                            'image' &&
-                            mediaUrl && (
-                              <Image
-                                source={{
-                                  uri:
-                                    mediaUrl,
-                                }}
-                                style={
-                                  styles.messageImage
-                                }
-                                resizeMode="cover"
-                              />
-                            )}
 
                           {message.message_type ===
                             'voice' &&
@@ -3193,8 +3774,8 @@ export default function ChatScreen() {
                                   selectionMode
                                 }
                                 onLongSelect={() =>
-                                  setSelectionMode(
-                                    true
+                                  openMessageMenu(
+                                    message
                                   )
                                 }
                               />
@@ -3219,6 +3800,16 @@ export default function ChatScreen() {
                           styles.messageMetaRow
                         }
                       >
+                        {!!message.edited_at && (
+                          <Text
+                            style={
+                              styles.editedLabel
+                            }
+                          >
+                            edited
+                          </Text>
+                        )}
+
                         <Text
                           style={
                             styles.messageTime
@@ -3251,7 +3842,10 @@ export default function ChatScreen() {
                             </Text>
                           )}
                       </View>
+
+                      </View>
                     </View>
+                    )}
                   </Pressable>
                 </SwipeMessage>
               );
@@ -3400,7 +3994,8 @@ export default function ChatScreen() {
             }
             disabled={
               sending ||
-              recorderState.isRecording
+              recorderState.isRecording ||
+              !!editingMessageId
             }
             hitSlop={8}
             style={
@@ -3568,6 +4163,274 @@ export default function ChatScreen() {
 
       <Modal
         visible={
+          !!photoViewerUrl
+        }
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setPhotoViewerUrl(
+            null
+          )
+        }
+      >
+        <Pressable
+          style={
+            styles.photoViewerBackdrop
+          }
+          onPress={() =>
+            setPhotoViewerUrl(
+              null
+            )
+          }
+        >
+          <Pressable
+            hitSlop={12}
+            style={
+              styles.photoViewerClose
+            }
+            onPress={(event) => {
+              event.stopPropagation();
+              setPhotoViewerUrl(
+                null
+              );
+            }}
+          >
+            <MaterialIcons
+              name="close"
+              size={30}
+              color={
+                DropColors.warmWhite
+              }
+            />
+          </Pressable>
+
+          {!!photoViewerUrl && (
+            <Pressable
+              style={[
+                styles.photoViewerImagePressable,
+                {
+                  width:
+                    viewerImageWidth,
+                  height:
+                    viewerImageHeight,
+                },
+              ]}
+              onPress={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <Image
+                source={{
+                  uri:
+                    photoViewerUrl,
+                }}
+                style={
+                  styles.photoViewerImage
+                }
+                resizeMode="contain"
+              />
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={
+          !!activeMessageMenuMessage &&
+          !selectionMode
+        }
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setActiveMessageMenuId(
+            null
+          )
+        }
+      >
+        <Pressable
+          style={
+            styles.messageMenuBackdrop
+          }
+          onPress={() =>
+            setActiveMessageMenuId(
+              null
+            )
+          }
+        >
+          {activeMessageMenuMessage && (
+            <Pressable
+              onLayout={(event) => {
+                const {
+                  width,
+                  height,
+                } =
+                  event.nativeEvent.layout;
+
+                if (
+                  width !==
+                    messageMenuSize.width ||
+                  height !==
+                    messageMenuSize.height
+                ) {
+                  setMessageMenuSize({
+                    width,
+                    height,
+                  });
+                }
+              }}
+              style={[
+                styles.messageActionMenu,
+                {
+                  left: menuLeft,
+                  top: menuTop,
+                },
+              ]}
+              onPress={() => {}}
+            >
+              <Pressable
+                style={
+                  styles.messageActionItem
+                }
+                onPress={() =>
+                  handleMessageReply(
+                    activeMessageMenuMessage
+                  )
+                }
+              >
+                <MaterialIcons
+                  name="reply"
+                  size={18}
+                  color={
+                    DropColors.warmWhite
+                  }
+                />
+                <Text
+                  style={
+                    styles.messageActionText
+                  }
+                >
+                  Reply
+                </Text>
+              </Pressable>
+
+              {!!activeMessageMenuMessage.text && (
+                <Pressable
+                  style={
+                    styles.messageActionItem
+                  }
+                  onPress={() =>
+                    handleMessageCopy(
+                      activeMessageMenuMessage
+                    )
+                  }
+                >
+                  <MaterialIcons
+                    name="content-copy"
+                    size={17}
+                    color={
+                      DropColors.warmWhite
+                    }
+                  />
+                  <Text
+                    style={
+                      styles.messageActionText
+                    }
+                  >
+                    Copy
+                  </Text>
+                </Pressable>
+              )}
+
+              {activeMessageMenuMessage.sender_id ===
+                currentUserId &&
+                activeMessageMenuMessage.message_type ===
+                  'text' &&
+                !!activeMessageMenuMessage.text && (
+                  <Pressable
+                    style={
+                      styles.messageActionItem
+                    }
+                    onPress={() =>
+                      handleMessageEdit(
+                        activeMessageMenuMessage
+                      )
+                    }
+                  >
+                    <MaterialIcons
+                      name="edit"
+                      size={18}
+                      color={
+                        DropColors.warmWhite
+                      }
+                    />
+                    <Text
+                      style={
+                        styles.messageActionText
+                      }
+                    >
+                      Edit
+                    </Text>
+                  </Pressable>
+                )}
+
+              <Pressable
+                style={
+                  styles.messageActionItem
+                }
+                onPress={() =>
+                  handleMessageDelete(
+                    activeMessageMenuMessage
+                  )
+                }
+              >
+                <MaterialIcons
+                  name="delete-outline"
+                  size={19}
+                  color={
+                    DropColors.warmWhite
+                  }
+                />
+                <Text
+                  style={
+                    styles.messageActionText
+                  }
+                >
+                  Delete
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={
+                  styles.messageActionItem
+                }
+                onPress={() =>
+                  handleMessageSelect(
+                    activeMessageMenuMessage
+                  )
+                }
+              >
+                <MaterialIcons
+                  name="check-box-outline-blank"
+                  size={19}
+                  color={
+                    DropColors.warmWhite
+                  }
+                />
+                <Text
+                  style={
+                    styles.messageActionText
+                  }
+                >
+                  Select
+                </Text>
+              </Pressable>
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={
           deleteModalVisible
         }
         transparent
@@ -3653,11 +4516,19 @@ export default function ChatScreen() {
                 style={
                   styles.deleteActionCancel
                 }
-                onPress={() =>
+                onPress={() => {
                   setDeleteModalVisible(
                     false
-                  )
-                }
+                  );
+
+                  if (
+                    !selectionMode
+                  ) {
+                    setSelectedMessageIds(
+                      new Set()
+                    );
+                  }
+                }}
               >
                 <Text
                   style={
@@ -3964,6 +4835,10 @@ const styles =
       alignItems: 'flex-end',
     },
 
+    messageRowSelectionMode: {
+      paddingLeft: 44,
+    },
+
     messageRowMine: {
       justifyContent:
         'flex-end',
@@ -3974,16 +4849,23 @@ const styles =
         'flex-start',
     },
 
-    messageRowSelected: {
-      backgroundColor:
-        'rgba(139,18,18,0.36)',
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor:
-        'rgba(139,18,18,0.68)',
+    messageColumn: {
+      maxWidth: '78%',
+      flexShrink: 1,
+    },
+
+    messageColumnMine: {
+      alignItems: 'flex-end',
+    },
+
+    messageColumnOther: {
+      alignItems: 'flex-start',
     },
 
     selectionCheckbox: {
+      position: 'absolute',
+      left: 8,
+      bottom: 8,
       width: 26,
       height: 26,
       borderRadius: 7,
@@ -3995,16 +4877,14 @@ const styles =
       alignItems: 'center',
       justifyContent:
         'center',
-      marginHorizontal: 8,
-      marginBottom: 8,
-      flexShrink: 0,
+      zIndex: 20,
     },
 
     selectionCheckboxActive: {
       backgroundColor:
         DropColors.wine,
       borderColor:
-        DropColors.wine,
+        DropColors.warmWhite,
     },
 
     messageAvatar: {
@@ -4013,7 +4893,7 @@ const styles =
     },
 
     bubble: {
-      maxWidth: '78%',
+      maxWidth: '100%',
       minWidth: 70,
       paddingHorizontal: 12,
       paddingTop: 9,
@@ -4035,6 +4915,16 @@ const styles =
         5,
     },
 
+    bubbleMineSelected: {
+      backgroundColor:
+        '#A52A32',
+    },
+
+    bubbleOtherSelected: {
+      backgroundColor:
+        '#5A5A5A',
+    },
+
     bubbleDeleted: {
       opacity: 0.72,
     },
@@ -4053,8 +4943,8 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.regular,
-      fontSize: 14,
-      lineHeight: 19,
+      fontSize: 16,
+      lineHeight: 22,
     },
 
     messageMetaRow: {
@@ -4070,18 +4960,77 @@ const styles =
       color:
         'rgba(255,242,228,0.52)',
       fontFamily:
-        DropTypography.regular,
-      fontSize: 9,
+        DropTypography.medium,
+      fontSize: 12,
       textAlign: 'right',
     },
 
-    readReceipt: {
+      readReceipt: {
+        color: 'rgba(255,242,228,0.82)',
+        fontFamily: DropTypography.medium,
+        fontSize: 13,
+        lineHeight: 14,
+        letterSpacing: -2,
+      },
+
+    editedLabel: {
       color:
-        'rgba(255,242,228,0.72)',
+        'rgba(255,242,228,0.58)',
       fontFamily:
-        DropTypography.medium,
+        DropTypography.regular,
       fontSize: 10,
-      letterSpacing: -1.5,
+      lineHeight: 12,
+    },
+
+    messageMenuBackdrop: {
+      flex: 1,
+      backgroundColor:
+        'rgba(0,0,0,0.12)',
+    },
+
+    messageActionMenu: {
+      position: 'absolute',
+      width: 230,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor:
+        DropColors.surface,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      elevation: 24,
+      shadowColor: '#000',
+      shadowOpacity: 0.32,
+      shadowRadius: 18,
+      shadowOffset: {
+        width: 0,
+        height: 8,
+      },
+    },
+
+    messageActionMenuMine: {
+      alignSelf: 'center',
+    },
+
+    messageActionMenuOther: {
+      alignSelf: 'center',
+    },
+
+    messageActionItem: {
+      minHeight: 34,
+      paddingHorizontal: 11,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 9,
+    },
+
+    messageActionText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 13,
     },
 
     deletedText: {
@@ -4093,14 +5042,119 @@ const styles =
       fontStyle: 'italic',
     },
 
-    messageImage: {
-      width: 220,
-      height: 250,
-      maxWidth: '100%',
-      borderRadius: 12,
-      marginBottom: 7,
+    photoMessageContainer: {
+      width: 270,
+      maxWidth: '82%',
+      borderRadius: 14,
+      overflow: 'hidden',
+      padding: 6,
+    },
+
+    photoMessageContainerMine: {
+      backgroundColor:
+        DropColors.wine,
+    },
+
+    photoMessageContainerOther: {
       backgroundColor:
         DropColors.surfaceElevated,
+    },
+
+    photoMessageSelectedMine: {
+      opacity: 0.92,
+      borderWidth: 2,
+      borderColor:
+        '#A52A32',
+    },
+
+    photoMessageSelectedOther: {
+      opacity: 0.92,
+      borderWidth: 2,
+      borderColor:
+        '#6A6A6A',
+    },
+
+    messageImage: {
+      width: '100%',
+      maxHeight: 360,
+      borderRadius: 14,
+      backgroundColor:
+        'transparent',
+    },
+
+    photoBubbleMetaRow: {
+      minHeight: 14,
+      marginTop: 3,
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 2,
+    },
+
+    photoMetaText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 10,
+      lineHeight: 12,
+    },
+
+    photoCaption: {
+      marginTop: 7,
+      paddingHorizontal: 3,
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 15,
+      lineHeight: 20,
+    },
+
+    photoCaptionMine: {
+      textAlign: 'left',
+    },
+
+    photoCaptionOther: {
+      textAlign: 'left',
+    },
+
+    photoViewerBackdrop: {
+      flex: 1,
+      backgroundColor:
+        'rgba(0,0,0,0.86)',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      paddingHorizontal: 14,
+      paddingVertical: 52,
+    },
+
+    photoViewerImagePressable: {
+      alignSelf: 'center',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+
+    photoViewerImage: {
+      width: '100%',
+      height: '100%',
+    },
+
+    photoViewerClose: {
+      position: 'absolute',
+      top: 58,
+      right: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor:
+        'rgba(20,20,20,0.72)',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      zIndex: 20,
     },
 
     replyQuote: {
