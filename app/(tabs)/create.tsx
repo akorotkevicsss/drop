@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import {
   router,
@@ -17,6 +18,7 @@ import {
   ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -28,11 +30,33 @@ import {
   View,
 } from 'react-native';
 
+import { PhotoEditor } from '@/components/photo-editor';
+
 import {
   DropColors,
   DropTypography,
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+
+type PendingImage = {
+  uri: string;
+  mimeType: string;
+  width: number;
+  height: number;
+};
+
+type PendingVideo = {
+  uri: string;
+  mimeType: string;
+  fileName: string;
+  fileSize: number;
+};
+
+type EditorSource = {
+  uri: string;
+  width: number;
+  height: number;
+};
 
 type JoinTimer =
   | 'none'
@@ -236,27 +260,51 @@ export default function CreateScreen() {
     >(null);
 
   const [
-    imageUri,
-    setImageUri,
+    backgroundImageUri,
+    setBackgroundImageUri,
   ] =
     useState<
       string | null
     >(null);
 
   const [
-    imageBase64,
-    setImageBase64,
+    backgroundImageBase64,
+    setBackgroundImageBase64,
   ] =
     useState<
       string | null
     >(null);
 
   const [
-    imageMimeType,
-    setImageMimeType,
+    backgroundImageMimeType,
+    setBackgroundImageMimeType,
   ] =
     useState<
       string | null
+    >(null);
+
+  const [
+    pendingImage,
+    setPendingImage,
+  ] =
+    useState<
+      PendingImage | null
+    >(null);
+
+  const [
+    pendingVideo,
+    setPendingVideo,
+  ] =
+    useState<
+      PendingVideo | null
+    >(null);
+
+  const [
+    photoEditorSource,
+    setPhotoEditorSource,
+  ] =
+    useState<
+      EditorSource | null
     >(null);
 
   const [
@@ -370,13 +418,22 @@ export default function CreateScreen() {
         setBackgroundColor(
           null
         );
-        setImageUri(
+        setBackgroundImageUri(
           null
         );
-        setImageBase64(
+        setBackgroundImageBase64(
           null
         );
-        setImageMimeType(
+        setBackgroundImageMimeType(
+          null
+        );
+        setPendingImage(
+          null
+        );
+        setPendingVideo(
+          null
+        );
+        setPhotoEditorSource(
           null
         );
         setLocationText(
@@ -418,7 +475,7 @@ export default function CreateScreen() {
       router.replace('/');
     };
 
-  const handlePickImage =
+  const handlePickBackgroundImage =
     async () => {
       const permission =
         await ImagePicker
@@ -474,30 +531,177 @@ export default function CreateScreen() {
         null
       );
 
-      setImageUri(
+      setBackgroundImageUri(
         asset.uri
       );
 
-      setImageBase64(
+      setBackgroundImageBase64(
         asset.base64 ??
           null
       );
 
-      setImageMimeType(
+      setBackgroundImageMimeType(
         asset.mimeType ??
           'image/jpeg'
       );
     };
 
-  const removeImage =
+  const removeBackgroundImage =
     () => {
-      setImageUri(
+      setBackgroundImageUri(
         null
       );
-      setImageBase64(
+      setBackgroundImageBase64(
         null
       );
-      setImageMimeType(
+      setBackgroundImageMimeType(
+        null
+      );
+    };
+
+  const handlePickAttachmentMedia =
+    async () => {
+      if (
+        loading
+      ) {
+        return;
+      }
+
+      const permission =
+        await ImagePicker
+          .requestMediaLibraryPermissionsAsync();
+
+      if (
+        !permission.granted
+      ) {
+        Alert.alert(
+          'Media access required',
+          'Allow access to your photo and video library.'
+        );
+
+        return;
+      }
+
+      const result =
+        await ImagePicker
+          .launchImageLibraryAsync({
+            mediaTypes: [
+              'images',
+              'videos',
+            ],
+            allowsEditing:
+              false,
+            quality:
+              1,
+            base64:
+              false,
+          });
+
+      if (
+        result.canceled
+      ) {
+        return;
+      }
+
+      const asset =
+        result.assets[0];
+
+      if (
+        !asset?.uri
+      ) {
+        return;
+      }
+
+      const isVideo =
+        asset.type ===
+          'video' ||
+        asset.mimeType
+          ?.toLowerCase()
+          .startsWith(
+            'video/'
+          );
+
+      if (
+        isVideo
+      ) {
+        const file =
+          new File(
+            asset.uri
+          );
+
+        const fileSize =
+          asset.fileSize ??
+          file.size ??
+          0;
+
+        const maxBytes =
+          50 *
+          1024 *
+          1024;
+
+        if (
+          fileSize >
+          maxBytes
+        ) {
+          Alert.alert(
+            'Video is too large',
+            'Choose a video up to 50 MB.'
+          );
+
+          return;
+        }
+
+        setPendingImage(
+          null
+        );
+
+        setPhotoEditorSource(
+          null
+        );
+
+        setPendingVideo({
+          uri:
+            asset.uri,
+          mimeType:
+            asset.mimeType ??
+            file.type ??
+            'video/mp4',
+          fileName:
+            asset.fileName ??
+            `video-${Date.now()}.mp4`,
+          fileSize,
+        });
+
+        return;
+      }
+
+      setPendingVideo(
+        null
+      );
+
+      setPhotoEditorSource({
+        uri:
+          asset.uri,
+        width:
+          asset.width ||
+          1,
+        height:
+          asset.height ||
+          1,
+      });
+    };
+
+  const removeAttachmentMedia =
+    () => {
+      setPendingImage(
+        null
+      );
+
+      setPendingVideo(
+        null
+      );
+
+      setPhotoEditorSource(
         null
       );
     };
@@ -538,31 +742,28 @@ export default function CreateScreen() {
 
   const uploadDropImage =
     async (
-      userId: string
+      userId: string,
+      base64: string,
+      mimeType: string | null,
+      kind: 'background' | 'attachment'
     ) => {
-      if (
-        !imageBase64
-      ) {
-        return null;
-      }
-
       const extension =
-        imageMimeType ===
+        mimeType ===
         'image/png'
           ? 'png'
-          : imageMimeType ===
+          : mimeType ===
               'image/webp'
             ? 'webp'
             : 'jpg';
 
       const path =
-        `${userId}/${Date.now()}-${Math.random()
+        `${userId}/${kind}-${Date.now()}-${Math.random()
           .toString(36)
           .slice(2, 9)}.${extension}`;
 
       const arrayBuffer =
         base64ToArrayBuffer(
-          imageBase64
+          base64
         );
 
       const {
@@ -577,7 +778,7 @@ export default function CreateScreen() {
             arrayBuffer,
             {
               contentType:
-                imageMimeType ??
+                mimeType ??
                 'image/jpeg',
               upsert:
                 false,
@@ -592,6 +793,55 @@ export default function CreateScreen() {
 
       return path;
     };
+
+  const uploadDropAttachmentFile =
+    async ({
+      bucket,
+      path,
+      uri,
+      contentType,
+    }: {
+      bucket:
+        'drop-images' |
+        'drop-videos';
+      path: string;
+      uri: string;
+      contentType: string;
+    }) => {
+      const file =
+        new File(
+          uri
+        );
+
+      const arrayBuffer =
+        await file.arrayBuffer();
+
+      const {
+        error,
+      } =
+        await supabase.storage
+          .from(
+            bucket
+          )
+          .upload(
+            path,
+            arrayBuffer,
+            {
+              contentType,
+              upsert:
+                false,
+            }
+          );
+
+      if (
+        error
+      ) {
+        throw error;
+      }
+
+      return path;
+    };
+
 
   const handleDrop =
     async () => {
@@ -645,28 +895,96 @@ export default function CreateScreen() {
           return;
         }
 
-        let imagePath:
+        let backgroundImagePath:
+          string | null =
+            null;
+
+        let attachmentImagePath:
+          string | null =
+            null;
+
+        let attachmentVideoPath:
           string | null =
             null;
 
         if (
-          imageUri
+          backgroundImageUri
         ) {
           if (
-            !imageBase64
+            !backgroundImageBase64
           ) {
             Alert.alert(
               'Image error',
-              'Could not prepare this image for upload. Please choose it again.'
+              'Could not prepare the background image. Please choose it again.'
             );
 
             return;
           }
 
-          imagePath =
+          backgroundImagePath =
             await uploadDropImage(
-              user.id
+              user.id,
+              backgroundImageBase64,
+              backgroundImageMimeType,
+              'background'
             );
+        }
+
+        if (
+          pendingVideo
+        ) {
+          const file =
+            new File(
+              pendingVideo.uri
+            );
+
+          const extension =
+            (
+              file.extension ||
+              '.mp4'
+            ).replace(
+              '.',
+              ''
+            );
+
+          attachmentVideoPath =
+            await uploadDropAttachmentFile({
+              bucket:
+                'drop-videos',
+              path:
+                `${user.id}/attachment-${Date.now()}-${Math.random()
+                  .toString(36)
+                  .slice(2, 9)}.${extension}`,
+              uri:
+                pendingVideo.uri,
+              contentType:
+                pendingVideo.mimeType,
+            });
+        } else if (
+          pendingImage
+        ) {
+          const extension =
+            pendingImage.mimeType ===
+            'image/png'
+              ? 'png'
+              : pendingImage.mimeType ===
+                  'image/webp'
+                ? 'webp'
+                : 'jpg';
+
+          attachmentImagePath =
+            await uploadDropAttachmentFile({
+              bucket:
+                'drop-images',
+              path:
+                `${user.id}/attachment-${Date.now()}-${Math.random()
+                  .toString(36)
+                  .slice(2, 9)}.${extension}`,
+              uri:
+                pendingImage.uri,
+              contentType:
+                pendingImage.mimeType,
+            });
         }
 
         const {
@@ -703,7 +1021,13 @@ export default function CreateScreen() {
                 backgroundColor,
 
               image_path:
-                imagePath,
+                backgroundImagePath,
+
+              attached_image_path:
+                attachmentImagePath,
+
+              attached_video_path:
+                attachmentVideoPath,
 
               location_text:
                 locationText
@@ -722,15 +1046,38 @@ export default function CreateScreen() {
         if (
           error
         ) {
+          const uploadedImagePaths = [
+            backgroundImagePath,
+            attachmentImagePath,
+          ].filter(
+            (
+              path
+            ): path is string =>
+              !!path
+          );
+
           if (
-            imagePath
+            uploadedImagePaths.length >
+            0
           ) {
             await supabase.storage
               .from(
                 'drop-images'
               )
+              .remove(
+                uploadedImagePaths
+              );
+          }
+
+          if (
+            attachmentVideoPath
+          ) {
+            await supabase.storage
+              .from(
+                'drop-videos'
+              )
               .remove([
-                imagePath,
+                attachmentVideoPath,
               ]);
           }
 
@@ -884,7 +1231,7 @@ export default function CreateScreen() {
               false
             }
           >
-            {!backgroundColor && !imageUri ? (
+            {!backgroundColor && !backgroundImageUri ? (
               <View
                 style={
                   styles.plainComposer
@@ -925,7 +1272,7 @@ export default function CreateScreen() {
                   {text.length}/280
                 </Text>
               </View>
-            ) : imageUri ? (
+            ) : backgroundImageUri ? (
               <View
                 style={
                   styles.backgroundPreviewWrap
@@ -934,7 +1281,7 @@ export default function CreateScreen() {
                 <ImageBackground
                   source={{
                     uri:
-                      imageUri,
+                      backgroundImageUri,
                   }}
                   style={
                     styles.backgroundImage
@@ -983,7 +1330,7 @@ export default function CreateScreen() {
 
                 <Pressable
                   onPress={
-                    removeImage
+                    removeBackgroundImage
                   }
                   hitSlop={8}
                   style={({ pressed }) => [
@@ -994,7 +1341,7 @@ export default function CreateScreen() {
                 >
                   <Text
                     style={
-                      styles.removeImageText
+                      styles.removeBackgroundImageText
                     }
                   >
                     ×
@@ -1050,7 +1397,7 @@ export default function CreateScreen() {
             >
               <Pressable
                 onPress={
-                  handlePickImage
+                  handlePickAttachmentMedia
                 }
                 hitSlop={8}
                 style={({ pressed }) => [
@@ -1063,13 +1410,121 @@ export default function CreateScreen() {
                   name="attach-file"
                   size={22}
                   color={
-                    imageUri
+                    pendingImage ||
+                    pendingVideo
                       ? DropColors.warmWhite
                       : DropColors.textSecondary
                   }
                 />
               </Pressable>
             </View>
+
+            {!!pendingVideo && (
+              <View
+                style={
+                  styles.mediaAttachmentRow
+                }
+              >
+                <View
+                  style={
+                    styles.pendingVideoIcon
+                  }
+                >
+                  <MaterialIcons
+                    name="videocam"
+                    size={25}
+                    color={
+                      DropColors.warmWhite
+                    }
+                  />
+                </View>
+
+                <View
+                  style={
+                    styles.mediaAttachmentText
+                  }
+                >
+                  <Text
+                    style={
+                      styles.mediaAttachmentTitle
+                    }
+                  >
+                    Video attached
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.mediaAttachmentSubtitle
+                    }
+                  >
+                    {(pendingVideo.fileSize /
+                      1024 /
+                      1024).toFixed(1)} MB · max 50 MB
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={
+                    removeAttachmentMedia
+                  }
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.mediaRemoveButton,
+                    pressed &&
+                      styles.pressed,
+                  ]}
+                >
+                  <MaterialIcons
+                    name="close"
+                    size={20}
+                    color={
+                      DropColors.textSecondary
+                    }
+                  />
+                </Pressable>
+              </View>
+            )}
+
+            {!!pendingImage && (
+              <View
+                style={
+                  styles.attachmentPreviewWrap
+                }
+              >
+                <ImageBackground
+                  source={{
+                    uri:
+                      pendingImage.uri,
+                  }}
+                  style={
+                    styles.attachmentPreview
+                  }
+                  imageStyle={
+                    styles.attachmentPreviewImage
+                  }
+                />
+
+                <Pressable
+                  onPress={
+                    removeAttachmentMedia
+                  }
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.removeAttachmentButton,
+                    pressed &&
+                      styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={
+                      styles.removeImageText
+                    }
+                  >
+                    ×
+                  </Text>
+                </Pressable>
+              </View>
+            )}
 
             <View
               style={
@@ -1094,7 +1549,7 @@ export default function CreateScreen() {
                     option
                   ) => {
                     const selected =
-                      !imageUri &&
+                      !backgroundImageUri &&
                       backgroundColor ===
                         option.value;
 
@@ -1104,7 +1559,7 @@ export default function CreateScreen() {
                           option.label
                         }
                         onPress={() => {
-                          removeImage();
+                          removeBackgroundImage();
                           setBackgroundColor(
                             option.value
                           );
@@ -1144,21 +1599,21 @@ export default function CreateScreen() {
 
                 <Pressable
                   onPress={
-                    handlePickImage
+                    handlePickBackgroundImage
                   }
                   style={({ pressed }) => [
                     styles.customBackgroundOption,
-                    imageUri &&
+                    backgroundImageUri &&
                       styles.backgroundOptionSelected,
                     pressed &&
                       styles.pressed,
                   ]}
                 >
-                  {imageUri ? (
+                  {backgroundImageUri ? (
                     <ImageBackground
                       source={{
                         uri:
-                          imageUri,
+                          backgroundImageUri,
                       }}
                       style={
                         styles.customBackgroundThumbnail
@@ -1596,6 +2051,58 @@ export default function CreateScreen() {
           </ScrollView>
         )}
       </Pressable>
+
+      <Modal
+        visible={
+          !!photoEditorSource
+        }
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() =>
+          setPhotoEditorSource(
+            null
+          )
+        }
+      >
+        {!!photoEditorSource && (
+          <PhotoEditor
+            uri={
+              photoEditorSource.uri
+            }
+            width={
+              photoEditorSource.width
+            }
+            height={
+              photoEditorSource.height
+            }
+            onCancel={() =>
+              setPhotoEditorSource(
+                null
+              )
+            }
+            onDone={(result) => {
+              setPendingVideo(
+                null
+              );
+
+              setPendingImage({
+                uri:
+                  result.uri,
+                mimeType:
+                  result.mimeType,
+                width:
+                  result.width,
+                height:
+                  result.height,
+              });
+
+              setPhotoEditorSource(
+                null
+              );
+            }}
+          />
+        )}
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1739,7 +2246,7 @@ const styles =
       flex: 1,
       minHeight: 260,
       backgroundColor:
-        'rgba(0,0,0,0.70)',
+        'rgba(0,0,0,0.28)',
       justifyContent:
         'space-between',
     },
@@ -1801,7 +2308,7 @@ const styles =
         'center',
     },
 
-    removeImageText: {
+    removeBackgroundImageText: {
       color:
         DropColors.warmWhite,
       fontSize: 24,
@@ -1823,6 +2330,99 @@ const styles =
       height: 36,
       alignItems: 'flex-start',
       justifyContent: 'center',
+    },
+
+    mediaAttachmentRow: {
+      marginHorizontal: 18,
+      marginTop: 12,
+      minHeight: 72,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 15,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      backgroundColor:
+        DropColors.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+
+    pendingVideoIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        DropColors.graphite,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+    },
+
+    mediaAttachmentText: {
+      flex: 1,
+    },
+
+    mediaAttachmentTitle: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
+    },
+
+    mediaAttachmentSubtitle: {
+      marginTop: 3,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
+    },
+
+    mediaRemoveButton: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    attachmentPreviewWrap: {
+      marginHorizontal: 18,
+      marginTop: 10,
+      borderRadius: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      backgroundColor:
+        DropColors.surface,
+    },
+
+    attachmentPreview: {
+      width: '100%',
+      aspectRatio: 4 / 3,
+    },
+
+    attachmentPreviewImage: {
+      borderRadius: 16,
+    },
+
+    removeAttachmentButton: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor:
+        'rgba(12,12,12,0.78)',
+      alignItems: 'center',
+      justifyContent:
+        'center',
     },
 
     section: {

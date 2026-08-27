@@ -1084,7 +1084,7 @@ const styles =
     },
 
     modeRow: {
-      height: 58,
+      height: 42,
       flexDirection: 'row',
       alignItems: 'stretch',
       borderBottomWidth:

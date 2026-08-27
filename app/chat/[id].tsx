@@ -4486,7 +4486,7 @@ export default function ChatScreen() {
               !recorderState.isRecording
             }
             selectionColor={
-              DropColors.wine
+              DropColors.warmWhite
             }
           />
 

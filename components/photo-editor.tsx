@@ -4,7 +4,7 @@ import {
   ImageManipulator,
   SaveFormat,
 } from 'expo-image-manipulator';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   PanResponder,
@@ -233,6 +233,55 @@ export function PhotoEditor({
       width: 1,
       height: 1,
     });
+
+  const cropScaleRef =
+    useRef(1);
+
+  const cropOffsetRef =
+    useRef({ x: 0, y: 0 });
+
+  const cropRectRef =
+    useRef<CropRect>({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+
+  const cropModeRef =
+    useRef(false);
+
+  useEffect(
+    () => {
+      cropScaleRef.current =
+        cropScale;
+    },
+    [cropScale]
+  );
+
+  useEffect(
+    () => {
+      cropOffsetRef.current =
+        cropOffset;
+    },
+    [cropOffset]
+  );
+
+  useEffect(
+    () => {
+      cropRectRef.current =
+        cropRect;
+    },
+    [cropRect]
+  );
+
+  useEffect(
+    () => {
+      cropModeRef.current =
+        cropMode;
+    },
+    [cropMode]
+  );
 
   const canvasRef =
     useRef<View>(
@@ -469,10 +518,24 @@ export function PhotoEditor({
         PanResponder.create({
           onStartShouldSetPanResponder:
             () =>
-              cropMode,
+              cropModeRef.current,
+
           onMoveShouldSetPanResponder:
-            () =>
-              cropMode,
+            (
+              _,
+              gesture
+            ) =>
+              cropModeRef.current &&
+              (
+                Math.abs(
+                  gesture.dx
+                ) >
+                  1 ||
+                Math.abs(
+                  gesture.dy
+                ) >
+                  1
+              ),
 
           onPanResponderGrant:
             (event) => {
@@ -492,8 +555,9 @@ export function PhotoEditor({
                   distanceBetweenTouches(
                     touches
                   );
+
                 cropPinchStartScale.current =
-                  cropScale;
+                  cropScaleRef.current;
               }
             },
 
@@ -502,7 +566,9 @@ export function PhotoEditor({
               event,
               gesture
             ) => {
-              if (!cropMode) {
+              if (
+                !cropModeRef.current
+              ) {
                 return;
               }
 
@@ -524,14 +590,27 @@ export function PhotoEditor({
                 ) {
                   cropPinchStartDistance.current =
                     distance;
+
                   cropPinchStartScale.current =
-                    cropScale;
+                    cropScaleRef.current;
+
+                  cropLastGesture.current =
+                    {
+                      x:
+                        gesture.dx,
+                      y:
+                        gesture.dy,
+                    };
+
                   return;
                 }
 
+                const currentRect =
+                  cropRectRef.current;
+
                 const minimumScale =
                   getMinimumCropScale(
-                    cropRect
+                    currentRect
                   );
 
                 const nextScale =
@@ -542,23 +621,37 @@ export function PhotoEditor({
                       cropPinchStartScale.current *
                         (
                           distance /
-                          cropPinchStartDistance.current
+                          Math.max(
+                            cropPinchStartDistance.current,
+                            1
+                          )
                         )
                     )
                   );
+
+                const currentOffset =
+                  cropOffsetRef.current;
+
+                const nextOffset =
+                  clampCropOffset(
+                    currentOffset.x,
+                    currentOffset.y,
+                    nextScale,
+                    currentRect
+                  );
+
+                cropScaleRef.current =
+                  nextScale;
+
+                cropOffsetRef.current =
+                  nextOffset;
 
                 setCropScale(
                   nextScale
                 );
 
                 setCropOffset(
-                  (current) =>
-                    clampCropOffset(
-                      current.x,
-                      current.y,
-                      nextScale,
-                      cropRect
-                    )
+                  nextOffset
                 );
 
                 cropLastGesture.current =
@@ -574,13 +667,12 @@ export function PhotoEditor({
 
               cropPinchStartDistance.current =
                 0;
-              cropPinchStartScale.current =
-                cropScale;
 
               const deltaX =
                 gesture.dx -
                 cropLastGesture.current
                   .x;
+
               const deltaY =
                 gesture.dy -
                 cropLastGesture.current
@@ -594,16 +686,30 @@ export function PhotoEditor({
                     gesture.dy,
                 };
 
+              const currentOffset =
+                cropOffsetRef.current;
+
+              const currentScale =
+                cropScaleRef.current;
+
+              const currentRect =
+                cropRectRef.current;
+
+              const nextOffset =
+                clampCropOffset(
+                  currentOffset.x +
+                    deltaX,
+                  currentOffset.y +
+                    deltaY,
+                  currentScale,
+                  currentRect
+                );
+
+              cropOffsetRef.current =
+                nextOffset;
+
               setCropOffset(
-                (current) =>
-                  clampCropOffset(
-                    current.x +
-                      deltaX,
-                    current.y +
-                      deltaY,
-                    cropScale,
-                    cropRect
-                  )
+                nextOffset
               );
             },
 
@@ -611,8 +717,10 @@ export function PhotoEditor({
             () => {
               cropPinchStartDistance.current =
                 0;
+
               cropPinchStartScale.current =
-                cropScale;
+                cropScaleRef.current;
+
               cropLastGesture.current =
                 {
                   x: 0,
@@ -624,23 +732,18 @@ export function PhotoEditor({
             () => {
               cropPinchStartDistance.current =
                 0;
+
               cropLastGesture.current =
                 {
                   x: 0,
                   y: 0,
                 };
             },
+
+          onPanResponderTerminationRequest:
+            () => false,
         }),
-      [
-        cropMode,
-        cropOffset,
-        cropScale,
-        cropRect,
-        cropBaseDisplayWidth,
-        cropBaseDisplayHeight,
-        cropStageWidth,
-        cropStageHeight,
-      ]
+      []
     );
 
   const makeCropResizeResponder = (
@@ -653,14 +756,32 @@ export function PhotoEditor({
   ) =>
     PanResponder.create({
       onStartShouldSetPanResponder:
-        () => cropMode,
+        () =>
+          cropModeRef.current,
+
       onMoveShouldSetPanResponder:
-        () => cropMode,
+        (
+          _,
+          gesture
+        ) =>
+          cropModeRef.current &&
+          (
+            Math.abs(
+              gesture.dx
+            ) >
+              1 ||
+            Math.abs(
+              gesture.dy
+            ) >
+              1
+          ),
 
       onPanResponderGrant:
         () => {
           cropResizeStartRect.current =
-            cropRect;
+            {
+              ...cropRectRef.current,
+            };
         },
 
       onPanResponderMove:
@@ -668,27 +789,45 @@ export function PhotoEditor({
           _,
           gesture
         ) => {
+          if (
+            !cropModeRef.current
+          ) {
+            return;
+          }
+
           const start =
             cropResizeStartRect.current;
 
+          const currentScale =
+            cropScaleRef.current;
+
+          const currentOffset =
+            cropOffsetRef.current;
+
           const imageBounds =
-            getCropImageBounds();
+            getCropImageBounds(
+              currentScale,
+              currentOffset
+            );
 
           const boundLeft =
             Math.max(
               0,
               imageBounds.left
             );
+
           const boundTop =
             Math.max(
               0,
               imageBounds.top
             );
+
           const boundRight =
             Math.min(
               cropStageWidth,
               imageBounds.right
             );
+
           const boundBottom =
             Math.min(
               cropStageHeight,
@@ -697,11 +836,14 @@ export function PhotoEditor({
 
           let left =
             start.x;
+
           let top =
             start.y;
+
           let right =
             start.x +
             start.width;
+
           let bottom =
             start.y +
             start.height;
@@ -760,7 +902,7 @@ export function PhotoEditor({
               );
           }
 
-          const nextRect = {
+          const nextRect: CropRect = {
             x:
               left,
             y:
@@ -773,6 +915,9 @@ export function PhotoEditor({
               top,
           };
 
+          cropRectRef.current =
+            nextRect;
+
           setCropRect(
             nextRect
           );
@@ -783,69 +928,146 @@ export function PhotoEditor({
             );
 
           if (
-            cropScale <
+            cropScaleRef.current <
             minimumScale
           ) {
+            const nextScale =
+              minimumScale;
+
+            const nextOffset =
+              clampCropOffset(
+                cropOffsetRef.current.x,
+                cropOffsetRef.current.y,
+                nextScale,
+                nextRect
+              );
+
+            cropScaleRef.current =
+              nextScale;
+
+            cropOffsetRef.current =
+              nextOffset;
+
             setCropScale(
-              minimumScale
+              nextScale
             );
 
             setCropOffset(
-              (current) =>
-                clampCropOffset(
-                  current.x,
-                  current.y,
-                  minimumScale,
-                  nextRect
-                )
+              nextOffset
+            );
+          } else {
+            const nextOffset =
+              clampCropOffset(
+                cropOffsetRef.current.x,
+                cropOffsetRef.current.y,
+                cropScaleRef.current,
+                nextRect
+              );
+
+            cropOffsetRef.current =
+              nextOffset;
+
+            setCropOffset(
+              nextOffset
             );
           }
         },
+
+      onPanResponderRelease:
+        () => {
+          cropResizeStartRect.current =
+            {
+              ...cropRectRef.current,
+            };
+        },
+
+      onPanResponderTerminate:
+        () => {
+          cropResizeStartRect.current =
+            {
+              ...cropRectRef.current,
+            };
+        },
+
+      onPanResponderTerminationRequest:
+        () => false,
     });
 
   const cropLeftResponder =
-    makeCropResizeResponder({
-      left: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          left: true,
+        }),
+      []
+    );
 
   const cropRightResponder =
-    makeCropResizeResponder({
-      right: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          right: true,
+        }),
+      []
+    );
 
   const cropTopResponder =
-    makeCropResizeResponder({
-      top: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          top: true,
+        }),
+      []
+    );
 
   const cropBottomResponder =
-    makeCropResizeResponder({
-      bottom: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          bottom: true,
+        }),
+      []
+    );
 
   const cropTopLeftResponder =
-    makeCropResizeResponder({
-      top: true,
-      left: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          top: true,
+          left: true,
+        }),
+      []
+    );
 
   const cropTopRightResponder =
-    makeCropResizeResponder({
-      top: true,
-      right: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          top: true,
+          right: true,
+        }),
+      []
+    );
 
   const cropBottomLeftResponder =
-    makeCropResizeResponder({
-      bottom: true,
-      left: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          bottom: true,
+          left: true,
+        }),
+      []
+    );
 
   const cropBottomRightResponder =
-    makeCropResizeResponder({
-      bottom: true,
-      right: true,
-    });
+    useMemo(
+      () =>
+        makeCropResizeResponder({
+          bottom: true,
+          right: true,
+        }),
+      []
+    );
 
   const panResponder =
     useMemo(
@@ -1099,27 +1321,67 @@ export function PhotoEditor({
           lockedRatio
         );
     } else {
-      const baseLeft =
-        (
-          cropStageWidth -
-          cropBaseDisplayWidth
-        ) / 2;
+      const padding =
+        18;
 
-      const baseTop =
-        (
-          cropStageHeight -
-          cropBaseDisplayHeight
-        ) / 2;
+      const maxWidth =
+        cropStageWidth -
+        padding * 2;
+
+      const maxHeight =
+        cropStageHeight -
+        padding * 2;
+
+      const sourceRatio =
+        workingWidth /
+        Math.max(
+          workingHeight,
+          1
+        );
+
+      let rectWidth =
+        maxWidth;
+
+      let rectHeight =
+        rectWidth /
+        Math.max(
+          sourceRatio,
+          0.01
+        );
+
+      if (
+        rectHeight >
+        maxHeight
+      ) {
+        rectHeight =
+          maxHeight;
+
+        rectWidth =
+          rectHeight *
+          sourceRatio;
+      }
 
       nextRect = {
         x:
-          baseLeft,
+          (
+            cropStageWidth -
+            rectWidth
+          ) / 2,
         y:
-          baseTop,
+          (
+            cropStageHeight -
+            rectHeight
+          ) / 2,
         width:
-          cropBaseDisplayWidth,
+          Math.max(
+            CROP_MIN_SIZE,
+            rectWidth
+          ),
         height:
-          cropBaseDisplayHeight,
+          Math.max(
+            CROP_MIN_SIZE,
+            rectHeight
+          ),
       };
     }
 
@@ -1134,21 +1396,36 @@ export function PhotoEditor({
         minimumScale
       );
 
-    setCropScale(
-      nextScale
-    );
-
-    setCropRect(
-      nextRect
-    );
-
-    setCropOffset(
+    const nextOffset =
       clampCropOffset(
         0,
         0,
         nextScale,
         nextRect
-      )
+      );
+
+    cropRectRef.current =
+      nextRect;
+
+    cropScaleRef.current =
+      nextScale;
+
+    cropOffsetRef.current =
+      nextOffset;
+
+    cropModeRef.current =
+      true;
+
+    setCropRect(
+      nextRect
+    );
+
+    setCropScale(
+      nextScale
+    );
+
+    setCropOffset(
+      nextOffset
     );
 
     setCropMode(true);
@@ -1161,12 +1438,24 @@ export function PhotoEditor({
       try {
         setBusy(true);
 
+        const activeScale =
+          cropScaleRef.current;
+
+        const activeOffset =
+          cropOffsetRef.current;
+
+        const activeRect =
+          cropRectRef.current;
+
         const displayScale =
           cropBaseScale *
-          cropScale;
+          activeScale;
 
         const imageBounds =
-          getCropImageBounds();
+          getCropImageBounds(
+            activeScale,
+            activeOffset
+          );
 
         const cropWidth =
           Math.max(
@@ -1174,7 +1463,7 @@ export function PhotoEditor({
             Math.min(
               workingWidth,
               Math.round(
-                cropRect.width /
+                activeRect.width /
                   displayScale
               )
             )
@@ -1186,7 +1475,7 @@ export function PhotoEditor({
             Math.min(
               workingHeight,
               Math.round(
-                cropRect.height /
+                activeRect.height /
                   displayScale
               )
             )
@@ -1200,7 +1489,7 @@ export function PhotoEditor({
                 cropWidth,
               Math.round(
                 (
-                  cropRect.x -
+                  activeRect.x -
                   imageBounds.left
                 ) /
                   displayScale
@@ -1216,7 +1505,7 @@ export function PhotoEditor({
                 cropHeight,
               Math.round(
                 (
-                  cropRect.y -
+                  activeRect.y -
                   imageBounds.top
                 ) /
                   displayScale
@@ -1262,6 +1551,8 @@ export function PhotoEditor({
           cropLockedRatio
         );
         setStrokes([]);
+        cropModeRef.current =
+          false;
         setCropMode(false);
         setCropLockedRatio(
           null
@@ -1366,6 +1657,8 @@ export function PhotoEditor({
         >
           <Pressable
             onPress={() => {
+              cropModeRef.current =
+                false;
               setCropMode(
                 false
               );
@@ -1439,6 +1732,7 @@ export function PhotoEditor({
               style={{
                 position:
                   'absolute',
+                zIndex: 1,
                 width:
                   cropImageBounds.width,
                 height:
@@ -2038,8 +2332,8 @@ export function PhotoEditor({
             style={
               styles.tool
             }
-            onPress={
-              openCrop
+            onPress={() =>
+              openCrop()
             }
             disabled={
               busy
@@ -2398,6 +2692,7 @@ const styles =
     cropShade: {
       position:
         'absolute',
+      zIndex: 2,
       backgroundColor:
         'rgba(0,0,0,0.58)',
     },
@@ -2405,6 +2700,7 @@ const styles =
     cropFrame: {
       position:
         'absolute',
+      zIndex: 5,
       borderWidth:
         1,
       borderColor:
