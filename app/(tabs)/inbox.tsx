@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import {
   ActivityIndicator,
   Pressable,
@@ -1033,13 +1035,11 @@ export default function InboxScreen() {
             styles.floatingCreateButtonPressed,
         ]}
       >
-        <Text
-          style={
-            styles.floatingCreateText
-          }
-        >
-          +
-        </Text>
+        <Ionicons
+          name="add"
+          size={28}
+          color={DropColors.warmWhite}
+        />
       </Pressable>
     </View>
   );
@@ -1276,26 +1276,21 @@ const styles =
       textAlign: 'center',
       marginTop: 7,
     },
-
-    floatingCreateButton: {
-      position: 'absolute',
-      right: 18,
-      bottom: 18,
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor:
-        DropColors.wine,
-      alignItems: 'center',
-      justifyContent:
-        'center',
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-      zIndex: 20,
-      elevation: 6,
-    },
+      floatingCreateButton: {
+        position: 'absolute',
+        right: 18,
+        bottom: 18,
+        width: 46,
+        height: 46,
+        borderRadius: 23,
+        backgroundColor: DropColors.wine,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: DropColors.border,
+        zIndex: 20,
+        elevation: 6,
+      },
 
     floatingCreateButtonPressed: {
       opacity: 0.72,

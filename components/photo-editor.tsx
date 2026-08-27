@@ -28,6 +28,13 @@ type DrawStroke = {
   color: string;
 };
 
+type CropRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type Props = {
   uri: string;
   width: number;
@@ -43,6 +50,9 @@ type Props = {
 
 const SCREEN_WIDTH =
   Dimensions.get('window').width;
+
+const CROP_STAGE_HEIGHT = 520;
+const CROP_MIN_SIZE = 72;
 
 function centerCrop(
   width: number,
@@ -181,6 +191,13 @@ export function PhotoEditor({
   ] = useState(false);
 
   const [
+    cropLockedRatio,
+    setCropLockedRatio,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
     cropScale,
     setCropScale,
   ] = useState(1);
@@ -190,8 +207,32 @@ export function PhotoEditor({
     setCropOffset,
   ] = useState({ x: 0, y: 0 });
 
-  const cropStartOffset =
+  const [
+    cropRect,
+    setCropRect,
+  ] = useState<CropRect>({
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+  });
+
+  const cropPinchStartDistance =
+    useRef(0);
+
+  const cropPinchStartScale =
+    useRef(1);
+
+  const cropLastGesture =
     useRef({ x: 0, y: 0 });
+
+  const cropResizeStartRect =
+    useRef<CropRect>({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
 
   const canvasRef =
     useRef<View>(
@@ -228,75 +269,583 @@ export function PhotoEditor({
       )
     );
 
-  const cropTargetRatio =
-    selectedRatio ??
-    workingWidth / Math.max(workingHeight, 1);
+  const cropStageWidth =
+    SCREEN_WIDTH - 24;
 
-  const cropMaxWidth = SCREEN_WIDTH - 24;
-  const cropMaxHeight = 520;
+  const cropStageHeight =
+    CROP_STAGE_HEIGHT;
 
-  const cropViewport = (() => {
-    if (cropMaxWidth / cropMaxHeight > cropTargetRatio) {
-      return {
-        width: cropMaxHeight * cropTargetRatio,
-        height: cropMaxHeight,
-      };
+  const makeFixedRatioRect = (
+    ratio: number
+  ): CropRect => {
+    const padding = 18;
+    const maxWidth =
+      cropStageWidth -
+      padding * 2;
+    const maxHeight =
+      cropStageHeight -
+      padding * 2;
+
+    let rectWidth =
+      maxWidth;
+    let rectHeight =
+      rectWidth /
+      ratio;
+
+    if (
+      rectHeight >
+      maxHeight
+    ) {
+      rectHeight =
+        maxHeight;
+      rectWidth =
+        rectHeight *
+        ratio;
     }
 
     return {
-      width: cropMaxWidth,
-      height: cropMaxWidth / Math.max(cropTargetRatio, 0.01),
-    };
-  })();
-
-  const cropBaseScale = Math.max(
-    cropViewport.width / Math.max(workingWidth, 1),
-    cropViewport.height / Math.max(workingHeight, 1)
-  );
-
-  const cropDisplayWidth =
-    workingWidth * cropBaseScale * cropScale;
-  const cropDisplayHeight =
-    workingHeight * cropBaseScale * cropScale;
-
-  const clampCropOffset = (x: number, y: number) => {
-    const maxX = Math.max(0, (cropDisplayWidth - cropViewport.width) / 2);
-    const maxY = Math.max(0, (cropDisplayHeight - cropViewport.height) / 2);
-
-    return {
-      x: Math.max(-maxX, Math.min(maxX, x)),
-      y: Math.max(-maxY, Math.min(maxY, y)),
+      x:
+        (
+          cropStageWidth -
+          rectWidth
+        ) / 2,
+      y:
+        (
+          cropStageHeight -
+          rectHeight
+        ) / 2,
+      width:
+        rectWidth,
+      height:
+        rectHeight,
     };
   };
 
-  const cropPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => cropMode,
-        onMoveShouldSetPanResponder: () => cropMode,
-        onPanResponderGrant: () => {
-          cropStartOffset.current = cropOffset;
-        },
-        onPanResponderMove: (_, gesture) => {
-          if (!cropMode) return;
+  const cropBaseScale =
+    Math.min(
+      cropStageWidth /
+        Math.max(workingWidth, 1),
+      cropStageHeight /
+        Math.max(workingHeight, 1)
+    );
 
-          setCropOffset(
-            clampCropOffset(
-              cropStartOffset.current.x + gesture.dx,
-              cropStartOffset.current.y + gesture.dy
+  const cropBaseDisplayWidth =
+    workingWidth * cropBaseScale;
+
+  const cropBaseDisplayHeight =
+    workingHeight * cropBaseScale;
+
+  const getCropDisplaySize = (
+    scale: number
+  ) => ({
+    width:
+      cropBaseDisplayWidth * scale,
+    height:
+      cropBaseDisplayHeight * scale,
+  });
+
+  const getCropImageBounds = (
+    scale = cropScale,
+    offset = cropOffset
+  ) => {
+    const display =
+      getCropDisplaySize(scale);
+
+    const left =
+      cropStageWidth / 2 -
+      display.width / 2 +
+      offset.x;
+
+    const top =
+      cropStageHeight / 2 -
+      display.height / 2 +
+      offset.y;
+
+    return {
+      left,
+      top,
+      right:
+        left + display.width,
+      bottom:
+        top + display.height,
+      width:
+        display.width,
+      height:
+        display.height,
+    };
+  };
+
+  const getMinimumCropScale = (
+    rect: CropRect
+  ) =>
+    Math.max(
+      rect.width /
+        Math.max(
+          cropBaseDisplayWidth,
+          1
+        ),
+      rect.height /
+        Math.max(
+          cropBaseDisplayHeight,
+          1
+        ),
+      0.2
+    );
+
+  const clampCropOffset = (
+    x: number,
+    y: number,
+    scale: number,
+    rect: CropRect = cropRect
+  ) => {
+    const display =
+      getCropDisplaySize(scale);
+
+    const minX =
+      rect.x +
+      rect.width -
+      cropStageWidth / 2 -
+      display.width / 2;
+
+    const maxX =
+      rect.x -
+      cropStageWidth / 2 +
+      display.width / 2;
+
+    const minY =
+      rect.y +
+      rect.height -
+      cropStageHeight / 2 -
+      display.height / 2;
+
+    const maxY =
+      rect.y -
+      cropStageHeight / 2 +
+      display.height / 2;
+
+    return {
+      x:
+        minX <= maxX
+          ? Math.max(
+              minX,
+              Math.min(maxX, x)
             )
-          );
+          : x,
+      y:
+        minY <= maxY
+          ? Math.max(
+              minY,
+              Math.min(maxY, y)
+            )
+          : y,
+    };
+  };
+
+  const distanceBetweenTouches = (
+    touches: readonly {
+      pageX: number;
+      pageY: number;
+    }[]
+  ) => {
+    if (touches.length < 2) {
+      return 0;
+    }
+
+    const dx =
+      touches[1].pageX -
+      touches[0].pageX;
+    const dy =
+      touches[1].pageY -
+      touches[0].pageY;
+
+    return Math.sqrt(
+      dx * dx + dy * dy
+    );
+  };
+
+  const cropPanResponder =
+    useMemo(
+      () =>
+        PanResponder.create({
+          onStartShouldSetPanResponder:
+            () =>
+              cropMode,
+          onMoveShouldSetPanResponder:
+            () =>
+              cropMode,
+
+          onPanResponderGrant:
+            (event) => {
+              cropLastGesture.current = {
+                x: 0,
+                y: 0,
+              };
+
+              const touches =
+                event.nativeEvent
+                  .touches;
+
+              if (
+                touches.length >= 2
+              ) {
+                cropPinchStartDistance.current =
+                  distanceBetweenTouches(
+                    touches
+                  );
+                cropPinchStartScale.current =
+                  cropScale;
+              }
+            },
+
+          onPanResponderMove:
+            (
+              event,
+              gesture
+            ) => {
+              if (!cropMode) {
+                return;
+              }
+
+              const touches =
+                event.nativeEvent
+                  .touches;
+
+              if (
+                touches.length >= 2
+              ) {
+                const distance =
+                  distanceBetweenTouches(
+                    touches
+                  );
+
+                if (
+                  cropPinchStartDistance.current <=
+                  0
+                ) {
+                  cropPinchStartDistance.current =
+                    distance;
+                  cropPinchStartScale.current =
+                    cropScale;
+                  return;
+                }
+
+                const minimumScale =
+                  getMinimumCropScale(
+                    cropRect
+                  );
+
+                const nextScale =
+                  Math.max(
+                    minimumScale,
+                    Math.min(
+                      5,
+                      cropPinchStartScale.current *
+                        (
+                          distance /
+                          cropPinchStartDistance.current
+                        )
+                    )
+                  );
+
+                setCropScale(
+                  nextScale
+                );
+
+                setCropOffset(
+                  (current) =>
+                    clampCropOffset(
+                      current.x,
+                      current.y,
+                      nextScale,
+                      cropRect
+                    )
+                );
+
+                cropLastGesture.current =
+                  {
+                    x:
+                      gesture.dx,
+                    y:
+                      gesture.dy,
+                  };
+
+                return;
+              }
+
+              cropPinchStartDistance.current =
+                0;
+              cropPinchStartScale.current =
+                cropScale;
+
+              const deltaX =
+                gesture.dx -
+                cropLastGesture.current
+                  .x;
+              const deltaY =
+                gesture.dy -
+                cropLastGesture.current
+                  .y;
+
+              cropLastGesture.current =
+                {
+                  x:
+                    gesture.dx,
+                  y:
+                    gesture.dy,
+                };
+
+              setCropOffset(
+                (current) =>
+                  clampCropOffset(
+                    current.x +
+                      deltaX,
+                    current.y +
+                      deltaY,
+                    cropScale,
+                    cropRect
+                  )
+              );
+            },
+
+          onPanResponderRelease:
+            () => {
+              cropPinchStartDistance.current =
+                0;
+              cropPinchStartScale.current =
+                cropScale;
+              cropLastGesture.current =
+                {
+                  x: 0,
+                  y: 0,
+                };
+            },
+
+          onPanResponderTerminate:
+            () => {
+              cropPinchStartDistance.current =
+                0;
+              cropLastGesture.current =
+                {
+                  x: 0,
+                  y: 0,
+                };
+            },
+        }),
+      [
+        cropMode,
+        cropOffset,
+        cropScale,
+        cropRect,
+        cropBaseDisplayWidth,
+        cropBaseDisplayHeight,
+        cropStageWidth,
+        cropStageHeight,
+      ]
+    );
+
+  const makeCropResizeResponder = (
+    edges: {
+      left?: boolean;
+      right?: boolean;
+      top?: boolean;
+      bottom?: boolean;
+    }
+  ) =>
+    PanResponder.create({
+      onStartShouldSetPanResponder:
+        () => cropMode,
+      onMoveShouldSetPanResponder:
+        () => cropMode,
+
+      onPanResponderGrant:
+        () => {
+          cropResizeStartRect.current =
+            cropRect;
         },
-      }),
-    [
-      cropMode,
-      cropOffset,
-      cropDisplayWidth,
-      cropDisplayHeight,
-      cropViewport.width,
-      cropViewport.height,
-    ]
-  );
+
+      onPanResponderMove:
+        (
+          _,
+          gesture
+        ) => {
+          const start =
+            cropResizeStartRect.current;
+
+          const imageBounds =
+            getCropImageBounds();
+
+          const boundLeft =
+            Math.max(
+              0,
+              imageBounds.left
+            );
+          const boundTop =
+            Math.max(
+              0,
+              imageBounds.top
+            );
+          const boundRight =
+            Math.min(
+              cropStageWidth,
+              imageBounds.right
+            );
+          const boundBottom =
+            Math.min(
+              cropStageHeight,
+              imageBounds.bottom
+            );
+
+          let left =
+            start.x;
+          let top =
+            start.y;
+          let right =
+            start.x +
+            start.width;
+          let bottom =
+            start.y +
+            start.height;
+
+          if (edges.left) {
+            left =
+              Math.max(
+                boundLeft,
+                Math.min(
+                  right -
+                    CROP_MIN_SIZE,
+                  start.x +
+                    gesture.dx
+                )
+              );
+          }
+
+          if (edges.right) {
+            right =
+              Math.min(
+                boundRight,
+                Math.max(
+                  left +
+                    CROP_MIN_SIZE,
+                  start.x +
+                    start.width +
+                    gesture.dx
+                )
+              );
+          }
+
+          if (edges.top) {
+            top =
+              Math.max(
+                boundTop,
+                Math.min(
+                  bottom -
+                    CROP_MIN_SIZE,
+                  start.y +
+                    gesture.dy
+                )
+              );
+          }
+
+          if (edges.bottom) {
+            bottom =
+              Math.min(
+                boundBottom,
+                Math.max(
+                  top +
+                    CROP_MIN_SIZE,
+                  start.y +
+                    start.height +
+                    gesture.dy
+                )
+              );
+          }
+
+          const nextRect = {
+            x:
+              left,
+            y:
+              top,
+            width:
+              right -
+              left,
+            height:
+              bottom -
+              top,
+          };
+
+          setCropRect(
+            nextRect
+          );
+
+          const minimumScale =
+            getMinimumCropScale(
+              nextRect
+            );
+
+          if (
+            cropScale <
+            minimumScale
+          ) {
+            setCropScale(
+              minimumScale
+            );
+
+            setCropOffset(
+              (current) =>
+                clampCropOffset(
+                  current.x,
+                  current.y,
+                  minimumScale,
+                  nextRect
+                )
+            );
+          }
+        },
+    });
+
+  const cropLeftResponder =
+    makeCropResizeResponder({
+      left: true,
+    });
+
+  const cropRightResponder =
+    makeCropResizeResponder({
+      right: true,
+    });
+
+  const cropTopResponder =
+    makeCropResizeResponder({
+      top: true,
+    });
+
+  const cropBottomResponder =
+    makeCropResizeResponder({
+      bottom: true,
+    });
+
+  const cropTopLeftResponder =
+    makeCropResizeResponder({
+      top: true,
+      left: true,
+    });
+
+  const cropTopRightResponder =
+    makeCropResizeResponder({
+      top: true,
+      right: true,
+    });
+
+  const cropBottomLeftResponder =
+    makeCropResizeResponder({
+      bottom: true,
+      left: true,
+    });
+
+  const cropBottomRightResponder =
+    makeCropResizeResponder({
+      bottom: true,
+      right: true,
+    });
 
   const panResponder =
     useMemo(
@@ -527,19 +1076,82 @@ export function PhotoEditor({
       }
     };
 
-  const openCrop = () => {
+  const openCrop = (
+    lockedRatio:
+      number | null = null
+  ) => {
     if (busy) return;
 
     setDrawMode(false);
-    setCropScale(1);
-    setCropOffset({ x: 0, y: 0 });
-    setCropMode(true);
-  };
+    setCropLockedRatio(
+      lockedRatio
+    );
 
-  const changeCropScale = (nextScale: number) => {
-    const normalizedScale = Math.max(1, Math.min(4, nextScale));
-    setCropScale(normalizedScale);
-    setCropOffset({ x: 0, y: 0 });
+    let nextRect:
+      CropRect;
+
+    if (
+      lockedRatio !==
+      null
+    ) {
+      nextRect =
+        makeFixedRatioRect(
+          lockedRatio
+        );
+    } else {
+      const baseLeft =
+        (
+          cropStageWidth -
+          cropBaseDisplayWidth
+        ) / 2;
+
+      const baseTop =
+        (
+          cropStageHeight -
+          cropBaseDisplayHeight
+        ) / 2;
+
+      nextRect = {
+        x:
+          baseLeft,
+        y:
+          baseTop,
+        width:
+          cropBaseDisplayWidth,
+        height:
+          cropBaseDisplayHeight,
+      };
+    }
+
+    const minimumScale =
+      getMinimumCropScale(
+        nextRect
+      );
+
+    const nextScale =
+      Math.max(
+        1,
+        minimumScale
+      );
+
+    setCropScale(
+      nextScale
+    );
+
+    setCropRect(
+      nextRect
+    );
+
+    setCropOffset(
+      clampCropOffset(
+        0,
+        0,
+        nextScale,
+        nextRect
+      )
+    );
+
+    setCropMode(true);
   };
 
   const applyCrop =
@@ -550,38 +1162,67 @@ export function PhotoEditor({
         setBusy(true);
 
         const displayScale =
-          cropBaseScale * cropScale;
+          cropBaseScale *
+          cropScale;
 
-        const imageLeft =
-          (cropViewport.width - cropDisplayWidth) / 2 +
-          cropOffset.x;
-        const imageTop =
-          (cropViewport.height - cropDisplayHeight) / 2 +
-          cropOffset.y;
+        const imageBounds =
+          getCropImageBounds();
 
-        const cropWidth = Math.min(
-          workingWidth,
-          Math.round(cropViewport.width / displayScale)
-        );
-        const cropHeight = Math.min(
-          workingHeight,
-          Math.round(cropViewport.height / displayScale)
-        );
+        const cropWidth =
+          Math.max(
+            1,
+            Math.min(
+              workingWidth,
+              Math.round(
+                cropRect.width /
+                  displayScale
+              )
+            )
+          );
 
-        const originX = Math.max(
-          0,
-          Math.min(
-            workingWidth - cropWidth,
-            Math.round(-imageLeft / displayScale)
-          )
-        );
-        const originY = Math.max(
-          0,
-          Math.min(
-            workingHeight - cropHeight,
-            Math.round(-imageTop / displayScale)
-          )
-        );
+        const cropHeight =
+          Math.max(
+            1,
+            Math.min(
+              workingHeight,
+              Math.round(
+                cropRect.height /
+                  displayScale
+              )
+            )
+          );
+
+        const originX =
+          Math.max(
+            0,
+            Math.min(
+              workingWidth -
+                cropWidth,
+              Math.round(
+                (
+                  cropRect.x -
+                  imageBounds.left
+                ) /
+                  displayScale
+              )
+            )
+          );
+
+        const originY =
+          Math.max(
+            0,
+            Math.min(
+              workingHeight -
+                cropHeight,
+              Math.round(
+                (
+                  cropRect.y -
+                  imageBounds.top
+                ) /
+                  displayScale
+              )
+            )
+          );
 
         const context =
           ImageManipulator.manipulate(
@@ -591,8 +1232,10 @@ export function PhotoEditor({
         context.crop({
           originX,
           originY,
-          width: cropWidth,
-          height: cropHeight,
+          width:
+            cropWidth,
+          height:
+            cropHeight,
         });
 
         const rendered =
@@ -600,17 +1243,34 @@ export function PhotoEditor({
 
         const result =
           await rendered.saveAsync({
-            format: SaveFormat.JPEG,
-            compress: 0.95,
+            format:
+              SaveFormat.JPEG,
+            compress:
+              0.95,
           });
 
-        setWorkingUri(result.uri);
-        setWorkingWidth(cropWidth);
-        setWorkingHeight(cropHeight);
+        setWorkingUri(
+          result.uri
+        );
+        setWorkingWidth(
+          cropWidth
+        );
+        setWorkingHeight(
+          cropHeight
+        );
+        setSelectedRatio(
+          cropLockedRatio
+        );
         setStrokes([]);
         setCropMode(false);
+        setCropLockedRatio(
+          null
+        );
         setCropScale(1);
-        setCropOffset({ x: 0, y: 0 });
+        setCropOffset({
+          x: 0,
+          y: 0,
+        });
       } finally {
         setBusy(false);
       }
@@ -690,118 +1350,430 @@ export function PhotoEditor({
     };
 
   if (cropMode) {
+    const cropImageBounds =
+      getCropImageBounds();
+
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <View
+        style={
+          styles.container
+        }
+      >
+        <View
+          style={
+            styles.header
+          }
+        >
           <Pressable
-            onPress={() => setCropMode(false)}
-            disabled={busy}
+            onPress={() => {
+              setCropMode(
+                false
+              );
+              setCropLockedRatio(
+                null
+              );
+            }}
+            disabled={
+              busy
+            }
           >
-            <Text style={styles.headerAction}>Cancel</Text>
+            <Text
+              style={
+                styles.headerAction
+              }
+            >
+              Cancel
+            </Text>
           </Pressable>
 
-          <Text style={styles.title}>Crop photo</Text>
+          <Text
+            style={
+              styles.title
+            }
+          >
+            Crop photo
+          </Text>
 
           <Pressable
-            onPress={applyCrop}
-            disabled={busy}
+            onPress={
+              applyCrop
+            }
+            disabled={
+              busy
+            }
           >
-            <Text style={[styles.headerAction, styles.done]}>
-              {busy ? '...' : 'Apply'}
+            <Text
+              style={[
+                styles.headerAction,
+                styles.done,
+              ]}
+            >
+              {busy
+                ? '...'
+                : 'Apply'}
             </Text>
           </Pressable>
         </View>
 
-        <View style={styles.cropStage}>
+        <View
+          style={
+            styles.cropStageWrap
+          }
+        >
           <View
             style={[
-              styles.cropViewport,
+              styles.cropStage,
               {
-                width: cropViewport.width,
-                height: cropViewport.height,
+                width:
+                  cropStageWidth,
+                height:
+                  cropStageHeight,
               },
             ]}
-            {...cropPanResponder.panHandlers}
           >
             <Image
-              source={{ uri: workingUri }}
+              source={{
+                uri:
+                  workingUri,
+              }}
               style={{
-                position: 'absolute',
-                width: cropDisplayWidth,
-                height: cropDisplayHeight,
+                position:
+                  'absolute',
+                width:
+                  cropImageBounds.width,
+                height:
+                  cropImageBounds.height,
                 left:
-                  (cropViewport.width - cropDisplayWidth) / 2 +
-                  cropOffset.x,
+                  cropImageBounds.left,
                 top:
-                  (cropViewport.height - cropDisplayHeight) / 2 +
-                  cropOffset.y,
+                  cropImageBounds.top,
               }}
               contentFit="fill"
             />
 
-            <View pointerEvents="none" style={styles.cropGrid}>
-              <View style={[styles.cropGridLine, styles.cropGridV1]} />
-              <View style={[styles.cropGridLine, styles.cropGridV2]} />
-              <View style={[styles.cropGridLine, styles.cropGridH1]} />
-              <View style={[styles.cropGridLine, styles.cropGridH2]} />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.cropShade,
+                {
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  height:
+                    cropRect.y,
+                },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.cropShade,
+                {
+                  left: 0,
+                  top:
+                    cropRect.y,
+                  width:
+                    cropRect.x,
+                  height:
+                    cropRect.height,
+                },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.cropShade,
+                {
+                  left:
+                    cropRect.x +
+                    cropRect.width,
+                  right: 0,
+                  top:
+                    cropRect.y,
+                  height:
+                    cropRect.height,
+                },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.cropShade,
+                {
+                  left: 0,
+                  right: 0,
+                  top:
+                    cropRect.y +
+                    cropRect.height,
+                  bottom: 0,
+                },
+              ]}
+            />
+
+            <View
+              pointerEvents="none"
+              style={[
+                styles.cropFrame,
+                {
+                  left:
+                    cropRect.x,
+                  top:
+                    cropRect.y,
+                  width:
+                    cropRect.width,
+                  height:
+                    cropRect.height,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.cropGridLine,
+                  styles.cropGridV1,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropGridLine,
+                  styles.cropGridV2,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropGridLine,
+                  styles.cropGridH1,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropGridLine,
+                  styles.cropGridH2,
+                ]}
+              />
+
+              <View
+                style={[
+                  styles.cropCorner,
+                  styles.cropCornerTopLeft,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropCorner,
+                  styles.cropCornerTopRight,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropCorner,
+                  styles.cropCornerBottomLeft,
+                ]}
+              />
+              <View
+                style={[
+                  styles.cropCorner,
+                  styles.cropCornerBottomRight,
+                ]}
+              />
             </View>
+
+            <View
+              style={[
+                styles.cropImageGestureSurface,
+                {
+                  left:
+                    cropRect.x +
+                    18,
+                  top:
+                    cropRect.y +
+                    18,
+                  width:
+                    Math.max(
+                      0,
+                      cropRect.width -
+                      36
+                    ),
+                  height:
+                    Math.max(
+                      0,
+                      cropRect.height -
+                      36
+                    ),
+                },
+              ]}
+              {...cropPanResponder.panHandlers}
+            />
+
+            {cropLockedRatio ===
+              null && (
+              <>
+            <View
+              style={[
+                styles.cropEdgeHit,
+                styles.cropEdgeLeft,
+                {
+                  left:
+                    cropRect.x -
+                    14,
+                  top:
+                    cropRect.y +
+                    24,
+                  height:
+                    Math.max(
+                      0,
+                      cropRect.height -
+                      48
+                    ),
+                },
+              ]}
+              {...cropLeftResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropEdgeHit,
+                styles.cropEdgeRight,
+                {
+                  left:
+                    cropRect.x +
+                    cropRect.width -
+                    14,
+                  top:
+                    cropRect.y +
+                    24,
+                  height:
+                    Math.max(
+                      0,
+                      cropRect.height -
+                      48
+                    ),
+                },
+              ]}
+              {...cropRightResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropEdgeHit,
+                styles.cropEdgeHorizontal,
+                {
+                  left:
+                    cropRect.x +
+                    24,
+                  top:
+                    cropRect.y -
+                    14,
+                  width:
+                    Math.max(
+                      0,
+                      cropRect.width -
+                      48
+                    ),
+                },
+              ]}
+              {...cropTopResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropEdgeHit,
+                styles.cropEdgeHorizontal,
+                {
+                  left:
+                    cropRect.x +
+                    24,
+                  top:
+                    cropRect.y +
+                    cropRect.height -
+                    14,
+                  width:
+                    Math.max(
+                      0,
+                      cropRect.width -
+                      48
+                    ),
+                },
+              ]}
+              {...cropBottomResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropCornerHit,
+                {
+                  left:
+                    cropRect.x -
+                    16,
+                  top:
+                    cropRect.y -
+                    16,
+                },
+              ]}
+              {...cropTopLeftResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropCornerHit,
+                {
+                  left:
+                    cropRect.x +
+                    cropRect.width -
+                    16,
+                  top:
+                    cropRect.y -
+                    16,
+                },
+              ]}
+              {...cropTopRightResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropCornerHit,
+                {
+                  left:
+                    cropRect.x -
+                    16,
+                  top:
+                    cropRect.y +
+                    cropRect.height -
+                    16,
+                },
+              ]}
+              {...cropBottomLeftResponder.panHandlers}
+            />
+
+            <View
+              style={[
+                styles.cropCornerHit,
+                {
+                  left:
+                    cropRect.x +
+                    cropRect.width -
+                    16,
+                  top:
+                    cropRect.y +
+                    cropRect.height -
+                    16,
+                },
+              ]}
+              {...cropBottomRightResponder.panHandlers}
+            />
+              </>
+            )}
           </View>
 
-          <Text style={styles.cropHint}>Drag to reposition · use − / + to zoom</Text>
-        </View>
-
-        <View style={styles.cropControls}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cropRatioRow}
+          <Text
+            style={
+              styles.cropHint
+            }
           >
-            {[
-              { label: 'Original', value: null as number | null },
-              { label: '1:1', value: 1 },
-              { label: '4:3', value: 4 / 3 },
-              { label: '16:9', value: 16 / 9 },
-            ].map((item) => {
-              const active =
-                item.value === null
-                  ? selectedRatio === null
-                  : selectedRatio === item.value;
-
-              return (
-                <Pressable
-                  key={item.label}
-                  style={[styles.cropRatioButton, active && styles.toolActive]}
-                  onPress={() => {
-                    setSelectedRatio(item.value);
-                    setCropScale(1);
-                    setCropOffset({ x: 0, y: 0 });
-                  }}
-                >
-                  <Text style={styles.cropRatioText}>{item.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.cropZoomRow}>
-            <Pressable
-              style={styles.cropZoomButton}
-              onPress={() => changeCropScale(cropScale - 0.15)}
-            >
-              <MaterialIcons name="remove" size={24} color={DropColors.warmWhite} />
-            </Pressable>
-
-            <Text style={styles.cropZoomText}>
-              {Math.round(cropScale * 100)}%
-            </Text>
-
-            <Pressable
-              style={styles.cropZoomButton}
-              onPress={() => changeCropScale(cropScale + 0.15)}
-            >
-              <MaterialIcons name="add" size={24} color={DropColors.warmWhite} />
-            </Pressable>
-          </View>
+            {cropLockedRatio ===
+            null
+              ? 'Drag any edge or corner to crop · pinch to zoom · drag inside the frame to reposition'
+              : 'Pinch to zoom · drag inside the frame to choose which part of the photo stays visible'}
+          </Text>
         </View>
       </View>
     );
@@ -985,7 +1957,7 @@ export function PhotoEditor({
                 styles.toolActive,
             ]}
             onPress={() =>
-              setSelectedRatio(1)
+              openCrop(1)
             }
           >
             <MaterialIcons
@@ -1012,7 +1984,7 @@ export function PhotoEditor({
                 styles.toolActive,
             ]}
             onPress={() =>
-              setSelectedRatio(
+              openCrop(
                 4 / 3
               )
             }
@@ -1041,7 +2013,7 @@ export function PhotoEditor({
                 styles.toolActive,
             ]}
             onPress={() =>
-              setSelectedRatio(
+              openCrop(
                 16 / 9
               )
             }
@@ -1402,121 +2374,177 @@ const styles =
         'space-between',
     },
 
-    cropStage: {
+    cropStageWrap: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 18,
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      paddingHorizontal:
+        12,
+      paddingVertical:
+        18,
     },
 
-    cropViewport: {
-      backgroundColor: '#000',
-      overflow: 'hidden',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: DropColors.warmWhite,
+    cropStage: {
+      position:
+        'relative',
+      backgroundColor:
+        '#000',
+      overflow:
+        'hidden',
     },
 
-    cropGrid: {
-      ...StyleSheet.absoluteFillObject,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.8)',
+    cropShade: {
+      position:
+        'absolute',
+      backgroundColor:
+        'rgba(0,0,0,0.58)',
+    },
+
+    cropFrame: {
+      position:
+        'absolute',
+      borderWidth:
+        1,
+      borderColor:
+        'rgba(255,255,255,0.95)',
     },
 
     cropGridLine: {
-      position: 'absolute',
-      backgroundColor: 'rgba(255,255,255,0.35)',
+      position:
+        'absolute',
+      backgroundColor:
+        'rgba(255,255,255,0.32)',
     },
 
     cropGridV1: {
       top: 0,
       bottom: 0,
-      left: '33.333%',
-      width: StyleSheet.hairlineWidth,
+      left:
+        '33.333%',
+      width:
+        StyleSheet.hairlineWidth,
     },
 
     cropGridV2: {
       top: 0,
       bottom: 0,
-      left: '66.666%',
-      width: StyleSheet.hairlineWidth,
+      left:
+        '66.666%',
+      width:
+        StyleSheet.hairlineWidth,
     },
 
     cropGridH1: {
       left: 0,
       right: 0,
-      top: '33.333%',
-      height: StyleSheet.hairlineWidth,
+      top:
+        '33.333%',
+      height:
+        StyleSheet.hairlineWidth,
     },
 
     cropGridH2: {
       left: 0,
       right: 0,
-      top: '66.666%',
-      height: StyleSheet.hairlineWidth,
+      top:
+        '66.666%',
+      height:
+        StyleSheet.hairlineWidth,
+    },
+
+    cropCorner: {
+      position:
+        'absolute',
+      width: 18,
+      height: 18,
+      borderColor:
+        DropColors.warmWhite,
+    },
+
+    cropCornerTopLeft: {
+      left: -2,
+      top: -2,
+      borderLeftWidth:
+        3,
+      borderTopWidth:
+        3,
+    },
+
+    cropCornerTopRight: {
+      right: -2,
+      top: -2,
+      borderRightWidth:
+        3,
+      borderTopWidth:
+        3,
+    },
+
+    cropCornerBottomLeft: {
+      left: -2,
+      bottom: -2,
+      borderLeftWidth:
+        3,
+      borderBottomWidth:
+        3,
+    },
+
+    cropCornerBottomRight: {
+      right: -2,
+      bottom: -2,
+      borderRightWidth:
+        3,
+      borderBottomWidth:
+        3,
+    },
+
+    cropImageGestureSurface: {
+      position:
+        'absolute',
+      zIndex: 10,
+      backgroundColor:
+        'transparent',
+    },
+
+    cropEdgeHit: {
+      position:
+        'absolute',
+      width: 28,
+      zIndex: 20,
+    },
+
+    cropEdgeLeft: {
+      width: 28,
+    },
+
+    cropEdgeRight: {
+      width: 28,
+    },
+
+    cropEdgeHorizontal: {
+      height: 28,
+    },
+
+    cropCornerHit: {
+      position:
+        'absolute',
+      width: 32,
+      height: 32,
+      zIndex: 30,
     },
 
     cropHint: {
-      marginTop: 14,
-      color: DropColors.textMuted,
-      fontFamily: DropTypography.regular,
-      fontSize: 12,
-      textAlign: 'center',
-    },
-
-    cropControls: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: DropColors.border,
-      paddingTop: 12,
-      paddingBottom: 28,
-    },
-
-    cropRatioRow: {
-      paddingHorizontal: 12,
-      gap: 8,
-      alignItems: 'center',
-    },
-
-    cropRatioButton: {
-      minWidth: 72,
-      height: 38,
-      paddingHorizontal: 14,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    cropRatioText: {
-      color: DropColors.warmWhite,
-      fontFamily: DropTypography.medium,
-      fontSize: 12,
-    },
-
-    cropZoomRow: {
-      marginTop: 14,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 18,
-    },
-
-    cropZoomButton: {
-      width: 42,
-      height: 36,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: DropColors.surface,
-    },
-
-    cropZoomText: {
-      minWidth: 52,
-      textAlign: 'center',
-      color: DropColors.warmWhite,
-      fontFamily: DropTypography.medium,
-      fontSize: 12,
+      marginTop:
+        14,
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.regular,
+      fontSize:
+        12,
+      textAlign:
+        'center',
     },
 
     colors: {
