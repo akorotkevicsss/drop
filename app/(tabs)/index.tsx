@@ -1203,7 +1203,7 @@ export default function HomeScreen() {
               styles.headerTitle
             }
           >
-            Drop
+            Drops
           </Text>
 
           <Text
