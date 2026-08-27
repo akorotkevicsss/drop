@@ -278,15 +278,17 @@ export default function SettingsScreen() {
                 Your follower count remains visible.
               </Text>
             </View>
-            <Switch
-              value={settings.show_followers}
-              onValueChange={(value) =>
-                updateSetting('show_followers', value)
-              }
-              trackColor={{ false: DropColors.surface, true: tint }}
-              thumbColor={DropColors.warmWhite}
-              disabled={saving}
-            />
+            <View style={styles.switchContainer}>
+              <Switch
+                value={settings.show_followers}
+                onValueChange={(value) =>
+                  updateSetting('show_followers', value)
+                }
+                trackColor={{ false: DropColors.surface, true: tint }}
+                thumbColor={DropColors.warmWhite}
+                disabled={saving}
+              />
+            </View>
           </View>
 
           <View style={[styles.switchRow, styles.topLine]}>
@@ -296,15 +298,17 @@ export default function SettingsScreen() {
                 Your following count remains visible.
               </Text>
             </View>
-            <Switch
-              value={settings.show_following}
-              onValueChange={(value) =>
-                updateSetting('show_following', value)
-              }
-              trackColor={{ false: DropColors.surface, true: tint }}
-              thumbColor={DropColors.warmWhite}
-              disabled={saving}
-            />
+            <View style={styles.switchContainer}>
+              <Switch
+                value={settings.show_following}
+                onValueChange={(value) =>
+                  updateSetting('show_following', value)
+                }
+                trackColor={{ false: DropColors.surface, true: tint }}
+                thumbColor={DropColors.warmWhite}
+                disabled={saving}
+              />
+            </View>
           </View>
         </View>
 
@@ -318,15 +322,17 @@ export default function SettingsScreen() {
                 New Drops start with Join enabled.
               </Text>
             </View>
-            <Switch
-              value={settings.default_join_enabled}
-              onValueChange={(value) =>
-                updateSetting('default_join_enabled', value)
-              }
-              trackColor={{ false: DropColors.surface, true: tint }}
-              thumbColor={DropColors.warmWhite}
-              disabled={saving}
-            />
+            <View style={styles.switchContainer}>
+              <Switch
+                value={settings.default_join_enabled}
+                onValueChange={(value) =>
+                  updateSetting('default_join_enabled', value)
+                }
+                trackColor={{ false: DropColors.surface, true: tint }}
+                thumbColor={DropColors.warmWhite}
+                disabled={saving}
+              />
+            </View>
           </View>
 
           <View style={[styles.switchRow, styles.topLine]}>
@@ -336,15 +342,17 @@ export default function SettingsScreen() {
                 New Drops start with Reply enabled.
               </Text>
             </View>
-            <Switch
-              value={settings.default_reply_enabled}
-              onValueChange={(value) =>
-                updateSetting('default_reply_enabled', value)
-              }
-              trackColor={{ false: DropColors.surface, true: tint }}
-              thumbColor={DropColors.warmWhite}
-              disabled={saving}
-            />
+            <View style={styles.switchContainer}>
+              <Switch
+                value={settings.default_reply_enabled}
+                onValueChange={(value) =>
+                  updateSetting('default_reply_enabled', value)
+                }
+                trackColor={{ false: DropColors.surface, true: tint }}
+                thumbColor={DropColors.warmWhite}
+                disabled={saving}
+              />
+            </View>
           </View>
         </View>
 
@@ -489,6 +497,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 18,
   },
+  switchContainer: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   topLine: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: DropColors.border,
@@ -512,7 +525,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   chevron: {
-    color: DropColors.wine,
+    color: DropColors.warmWhite,
     fontFamily: DropTypography.light,
     fontSize: 22,
   },

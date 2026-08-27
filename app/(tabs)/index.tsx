@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 
+import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 
@@ -1389,14 +1390,14 @@ export default function HomeScreen() {
                 );
 
               return (
-                <View
-                  key={
-                    drop.id
-                  }
-                  style={
-                    styles.drop
-                  }
-                >
+                  <View
+                    key={drop.id}
+                    style={[
+                      styles.drop,
+                      isOwnDrop &&
+                        styles.ownDropBackground,
+                    ]}
+                  >
                   <Pressable
                     style={
                       styles.userRow
@@ -1655,21 +1656,37 @@ export default function HomeScreen() {
                             )
                           }
                         >
-                          <Text
-                            style={[
-                              styles.secondaryAction,
+                          {likeLoadingId ===
+                          drop.id ? (
+                            <Text
+                              style={
+                                styles.secondaryAction
+                              }
+                            >
+                              ...
+                            </Text>
+                          ) : (
+                            <View
+                              style={
+                                styles.likeActionContent
+                              }
+                            >
+                              <HeartIcon
+                                liked={isLiked}
+                                size={20}
+                              />
 
-                              isLiked &&
-                                styles.likedAction,
-                            ]}
-                          >
-                            {likeLoadingId ===
-                            drop.id
-                              ? '...'
-                              : isLiked
-                                ? `♥ ${likeCount}`
-                                : `♡ ${likeCount}`}
-                          </Text>
+                              <Text
+                                style={[
+                                  styles.secondaryAction,
+                                  isLiked &&
+                                    styles.likedAction,
+                                ]}
+                              >
+                                {likeCount}
+                              </Text>
+                            </View>
+                          )}
                         </TouchableOpacity>
                       )}
 
@@ -1715,13 +1732,24 @@ export default function HomeScreen() {
                           Your Drop
                         </Text>
 
-                        <Text
+                        <View
                           style={
-                            styles.ownLikeCount
+                            styles.ownLikeContent
                           }
                         >
-                          ♥ {likeCount}
-                        </Text>
+                          <HeartIcon
+                            liked
+                            size={20}
+                          />
+
+                          <Text
+                            style={
+                              styles.ownLikeCount
+                            }
+                          >
+                            {likeCount}
+                          </Text>
+                        </View>
 
                         <Pressable
                           onPress={() =>
@@ -1893,6 +1921,11 @@ const styles =
       borderBottomColor:
         DropColors.border,
     },
+
+    ownDropBackground: {
+      backgroundColor: '#151515',
+    },
+
 
     userRow: {
       flexDirection:
@@ -2088,6 +2121,18 @@ const styles =
         DropColors.warmWhite,
     },
 
+    likeActionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+
+    ownLikeContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+
     secondaryAction: {
       color:
         DropColors.textSecondary,
@@ -2125,7 +2170,7 @@ const styles =
         DropColors.textSecondary,
       fontFamily:
         DropTypography.regular,
-      fontSize: 11,
+      fontSize: 13,
     },
 
     deleteDropButton: {

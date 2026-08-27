@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 
+import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ExplorePeopleSearch } from '@/components/explore-people-search';
@@ -1621,14 +1622,10 @@ export default function ExploreScreen() {
                   );
 
                 return (
-                  <View
-                    key={
-                      drop.id
-                    }
-                    style={
-                      styles.drop
-                    }
-                  >
+                    <View
+                      key={drop.id}
+                      style={styles.drop}
+                    >
                     <Pressable
                       style={
                         styles.userRow
@@ -1875,20 +1872,39 @@ export default function ExploreScreen() {
                               )
                             }
                           >
-                            <Text
-                              style={[
-                                styles.secondaryAction,
-                                isLiked &&
-                                  styles.likedAction,
-                              ]}
-                            >
-                              {likeLoadingId ===
-                              drop.id
-                                ? '...'
-                                : isLiked
-                                  ? `♥ ${likeCount}`
-                                  : `♡ ${likeCount}`}
-                            </Text>
+                            {likeLoadingId ===
+                            drop.id ? (
+                              <Text
+                                style={
+                                  styles.secondaryAction
+                                }
+                              >
+                                ...
+                              </Text>
+                            ) : (
+                              <View
+                                style={
+                                  styles.likeActionContent
+                                }
+                              >
+                                <HeartIcon
+                                  liked={
+                                    isLiked
+                                  }
+                                  size={20}
+                                />
+
+                                <Text
+                                  style={[
+                                    styles.secondaryAction,
+                                    isLiked &&
+                                      styles.likedAction,
+                                  ]}
+                                >
+                                  {likeCount}
+                                </Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
                         )}
 
@@ -1934,13 +1950,24 @@ export default function ExploreScreen() {
                             Your Drop
                           </Text>
 
-                          <Text
+                          <View
                             style={
-                              styles.ownLikeCount
+                              styles.ownLikeContent
                             }
                           >
-                            ♥ {likeCount}
-                          </Text>
+                            <HeartIcon
+                              liked
+                              size={20}
+                            />
+
+                            <Text
+                              style={
+                                styles.ownLikeCount
+                              }
+                            >
+                              {likeCount}
+                            </Text>
+                          </View>
 
                           <Pressable
                             onPress={() =>
@@ -2397,13 +2424,25 @@ const styles =
       textAlign: 'center',
     },
 
+    likeActionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+
+    ownLikeContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+
     secondaryAction: {
       color:
         DropColors.textSecondary,
       fontFamily:
         DropTypography.regular,
       fontSize:
-        14,
+        13,
     },
 
     likedAction: {
@@ -2439,7 +2478,7 @@ const styles =
       fontFamily:
         DropTypography.regular,
       fontSize:
-        12,
+        13,
     },
 
     deleteDropButton: {

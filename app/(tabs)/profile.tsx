@@ -216,7 +216,6 @@ export default function ProfileScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>YOUR DROPS</Text>
-          <Text style={styles.sectionCount}>{myDrops.length}</Text>
         </View>
 
         {myDrops.length === 0 ? (
@@ -350,8 +349,8 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   lineAction: {
-    marginHorizontal: 22,
     minHeight: 56,
+    paddingHorizontal: 22,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DropColors.border,
     flexDirection: 'row',
@@ -364,7 +363,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   chevron: {
-    color: DropColors.wine,
+    color: DropColors.warmWhite,
     fontFamily: DropTypography.light,
     fontSize: 22,
   },
