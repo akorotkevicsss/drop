@@ -46,6 +46,8 @@ type Drop = {
   text: string;
   city: string | null;
   event_time: string | null;
+  event_end_time: string | null;
+  status: string | null;
   join_enabled: boolean;
   interested_enabled: boolean;
   reply_enabled: boolean;
@@ -81,6 +83,24 @@ type ConversationRow = {
   participant_id: string;
 };
 
+
+function formatEventRange(startValue: string | null, endValue: string | null) {
+  if (!startValue) return null;
+  const start = new Date(startValue); if (Number.isNaN(start.getTime())) return null;
+  const date = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
+  const st = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (!endValue) return `${date} · ${st}`;
+  const end = new Date(endValue); if (Number.isNaN(end.getTime())) return `${date} · ${st}`;
+  const et = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const same = start.toDateString() === end.toDateString();
+  return same ? `${date} · ${st}–${et}` : `${date} ${st} → ${end.toLocaleDateString('en-GB',{day:'numeric',month:'short'}).toUpperCase()} ${et}`;
+}
+function dropStatusLabel(status: string | null | undefined, endValue: string | null) {
+  if (status === 'cancelled') return 'CANCELLED';
+  if (status === 'ended') return 'ENDED';
+  if (endValue && new Date(endValue).getTime() < Date.now()) return 'ENDED';
+  return null;
+}
 function formatDropTime(createdAt: string) {
   const created = new Date(createdAt);
   const now = new Date();
@@ -317,6 +337,8 @@ export default function HomeScreen() {
             text,
             city,
             event_time,
+            event_end_time,
+            status,
             join_enabled,
             interested_enabled,
             reply_enabled,
@@ -1454,6 +1476,11 @@ export default function HomeScreen() {
                     </View>
                   </Pressable>
 
+                  <Pressable
+                    onPress={() =>
+                      router.push({ pathname: '/drop/[id]', params: { id: drop.id } } as any)
+                    }
+                  >
                   {hasBackground ? (
                     imageUrl ? (
                       <ImageBackground
@@ -1527,6 +1554,14 @@ export default function HomeScreen() {
                     />
                   )}
 
+                  {dropStatusLabel(drop.status, drop.event_end_time) && (
+                    <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{dropStatusLabel(drop.status, drop.event_end_time)}</Text></View>
+                  )}
+
+                  {!!formatEventRange(drop.event_time, drop.event_end_time) && (
+                    <Text style={styles.eventMeta}>◷  {formatEventRange(drop.event_time, drop.event_end_time)}</Text>
+                  )}
+
                   {!!location && (
                     <Text
                       style={
@@ -1585,6 +1620,8 @@ export default function HomeScreen() {
                       {joinTimerLabel}
                     </Text>
                   )}
+
+                  </Pressable>
 
                   {!isOwnDrop && (
                     <View
@@ -2045,6 +2082,10 @@ const styles =
     attachedImageRadius: {
       borderRadius: 16,
     },
+
+    statusBadge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: '#2A1717', borderWidth: StyleSheet.hairlineWidth, borderColor: DropColors.wine },
+    statusBadgeText: { color: DropColors.warmWhite, fontFamily: DropTypography.semibold, fontSize: 10, letterSpacing: 1.1 },
+    eventMeta: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 12, marginTop: 9 },
 
     meta: {
       color:

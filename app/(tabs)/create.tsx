@@ -15,7 +15,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -23,13 +22,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
-  TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
+import { DropDateTimePicker } from '@/components/drop-date-time-picker';
 import { PhotoEditor } from '@/components/photo-editor';
 
 import {
@@ -66,6 +64,8 @@ type JoinTimer =
   | '12h'
   | '24h';
 
+type JoinMode = 'request' | 'free' | 'invite_only';
+
 type AgeRestriction =
   | 'everyone'
   | 'under16'
@@ -83,57 +83,57 @@ const JOIN_TIMER_OPTIONS: {
   value: JoinTimer;
   label: string;
 }[] = [
-  {
-    value: 'none',
-    label: 'No limit',
-  },
-  {
-    value: '1h',
-    label: '1h',
-  },
-  {
-    value: '3h',
-    label: '3h',
-  },
-  {
-    value: '6h',
-    label: '6h',
-  },
-  {
-    value: '12h',
-    label: '12h',
-  },
-  {
-    value: '24h',
-    label: '24h',
-  },
-];
+    {
+      value: 'none',
+      label: 'No limit',
+    },
+    {
+      value: '1h',
+      label: '1h',
+    },
+    {
+      value: '3h',
+      label: '3h',
+    },
+    {
+      value: '6h',
+      label: '6h',
+    },
+    {
+      value: '12h',
+      label: '12h',
+    },
+    {
+      value: '24h',
+      label: '24h',
+    },
+  ];
 
 const AGE_OPTIONS: {
   value: AgeRestriction;
   label: string;
 }[] = [
-  {
-    value: 'everyone',
-    label: 'Everyone',
-  },
-  {
-    value: 'under16',
-    label: 'Under 16',
-  },
-  {
-    value: '16+',
-    label: '16+',
-  },
-  {
-    value: '18+',
-    label: '18+',
-  },
-  {
-    value: '21+',
-    label: '21+',
-  },
-];
+    {
+      value: 'everyone',
+      label: 'Everyone',
+    },
+    {
+      value: 'under16',
+      label: 'Under 16',
+    },
+    {
+      value: '16+',
+      label: '16+',
+    },
+    {
+      value: '18+',
+      label: '18+',
+    },
+    {
+      value: '21+',
+      label: '21+',
+    },
+  ];
 
 const BACKGROUND_OPTIONS: BackgroundOption[] = [
   {
@@ -182,10 +182,10 @@ function getJoinUntil(
 
   return new Date(
     Date.now() +
-      hours *
-        60 *
-        60 *
-        1000
+    hours *
+    60 *
+    60 *
+    1000
   ).toISOString();
 }
 
@@ -317,18 +317,24 @@ export default function CreateScreen() {
     setJoinLimitText,
   ] = useState('');
 
-  const [
-    ageRestriction,
-    setAgeRestriction,
-  ] =
-    useState<AgeRestriction>(
-      'everyone'
-    );
+  const [ageRestriction, setAgeRestriction] = useState('');
 
   const [
     showMoreOptions,
     setShowMoreOptions,
   ] = useState(false);
+
+  const [eventStart, setEventStart] = useState<Date | null>(null);
+  const [eventEnd, setEventEnd] = useState<Date | null>(null);
+  const [datePicker, setDatePicker] = useState<'start' | 'end' | null>(null);
+  const [joinMode, setJoinMode] = useState<JoinMode>('request');
+  const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const [dressCode, setDressCode] = useState('');
+  const [priceText, setPriceText] = useState('');
+  const [languageText, setLanguageText] = useState('');
+  const [conditions, setConditions] = useState('');
+  const [hashtags, setHashtags] = useState('');
+  const [additionalOptionsOpen, setAdditionalOptionsOpen] = useState(false);
 
   const loadDefaults =
     async () => {
@@ -342,7 +348,7 @@ export default function CreateScreen() {
             user,
           },
           error:
-            userError,
+          userError,
         } =
           await supabase.auth.getUser();
 
@@ -394,12 +400,12 @@ export default function CreateScreen() {
 
         setJoinEnabled(
           data.default_join_enabled ??
-            true
+          true
         );
 
         setReplyEnabled(
           data.default_reply_enabled ??
-            true
+          true
         );
       } finally {
         setLoadingDefaults(
@@ -442,12 +448,18 @@ export default function CreateScreen() {
         setJoinLimitText(
           ''
         );
-        setAgeRestriction(
-          'everyone'
-        );
-        setShowMoreOptions(
-          false
-        );
+        setAgeRestriction('');
+        setShowMoreOptions(false);
+        setEventStart(null);
+        setEventEnd(null);
+        setDatePicker(null);
+        setJoinMode('request');
+        setCommentsEnabled(false);
+        setDressCode('');
+        setPriceText('');
+        setLanguageText('');
+        setConditions('');
+        setHashtags('');
       },
       []
     );
@@ -537,12 +549,12 @@ export default function CreateScreen() {
 
       setBackgroundImageBase64(
         asset.base64 ??
-          null
+        null
       );
 
       setBackgroundImageMimeType(
         asset.mimeType ??
-          'image/jpeg'
+        'image/jpeg'
       );
     };
 
@@ -614,7 +626,7 @@ export default function CreateScreen() {
 
       const isVideo =
         asset.type ===
-          'video' ||
+        'video' ||
         asset.mimeType
           ?.toLowerCase()
           .startsWith(
@@ -749,10 +761,10 @@ export default function CreateScreen() {
     ) => {
       const extension =
         mimeType ===
-        'image/png'
+          'image/png'
           ? 'png'
           : mimeType ===
-              'image/webp'
+            'image/webp'
             ? 'webp'
             : 'jpg';
 
@@ -802,8 +814,8 @@ export default function CreateScreen() {
       contentType,
     }: {
       bucket:
-        'drop-images' |
-        'drop-videos';
+      'drop-images' |
+      'drop-videos';
       path: string;
       uri: string;
       contentType: string;
@@ -859,7 +871,7 @@ export default function CreateScreen() {
       if (
         joinLimitText.trim() &&
         parsedJoinLimit ===
-          null
+        null
       ) {
         Alert.alert(
           'Invalid Join limit',
@@ -879,7 +891,7 @@ export default function CreateScreen() {
             user,
           },
           error:
-            userError,
+          userError,
         } =
           await supabase.auth.getUser();
 
@@ -897,15 +909,15 @@ export default function CreateScreen() {
 
         let backgroundImagePath:
           string | null =
-            null;
+          null;
 
         let attachmentImagePath:
           string | null =
-            null;
+          null;
 
         let attachmentVideoPath:
           string | null =
-            null;
+          null;
 
         if (
           backgroundImageUri
@@ -965,10 +977,10 @@ export default function CreateScreen() {
         ) {
           const extension =
             pendingImage.mimeType ===
-            'image/png'
+              'image/png'
               ? 'png'
               : pendingImage.mimeType ===
-                  'image/webp'
+                'image/webp'
                 ? 'webp'
                 : 'jpg';
 
@@ -1001,14 +1013,25 @@ export default function CreateScreen() {
               text:
                 trimmedText,
 
+              event_time: eventStart ? eventStart.toISOString() : null,
+              event_end_time: eventEnd ? eventEnd.toISOString() : null,
+              status: 'active',
+              comments_enabled: commentsEnabled,
+              dress_code: dressCode.trim() || null,
+              price_text: priceText.trim() || null,
+              language_text: languageText.trim() || null,
+              conditions: conditions.trim() || null,
+              hashtags: hashtags.trim() ? hashtags.trim().split(/\s+/).map((tag) => tag.replace(/^#/, '').toLowerCase()).filter(Boolean) : [],
+              join_mode: joinEnabled ? joinMode : 'request',
+
               join_enabled:
                 joinEnabled,
 
               join_until:
                 joinEnabled
                   ? getJoinUntil(
-                      joinTimer
-                    )
+                    joinTimer
+                  )
                   : null,
 
               interested_enabled:
@@ -1040,7 +1063,7 @@ export default function CreateScreen() {
                   : null,
 
               age_restriction:
-                ageRestriction,
+                ageRestriction.trim() ? `${ageRestriction.trim()}+` : null,
             });
 
         if (
@@ -1101,7 +1124,7 @@ export default function CreateScreen() {
           '/'
         );
       } catch (
-        error
+      error
       ) {
         console.error(
           'CREATE DROP ERROR:',
@@ -1124,933 +1147,349 @@ export default function CreateScreen() {
     loading ||
     loadingDefaults;
 
-  return (
-    <KeyboardAvoidingView
-      style={
-        styles.container
-      }
-      behavior={
-        Platform.OS ===
-        'ios'
-          ? 'padding'
-          : 'height'
-      }
-    >
-      <Pressable
-        style={
-          styles.screen
-        }
-        onPress={
-          Keyboard.dismiss
-        }
-      >
-        <View
-          style={
-            styles.header
-          }
-        >
-          <TouchableOpacity
-            onPress={
-              handleCancel
-            }
-            disabled={
-              loading
-            }
-            activeOpacity={
-              0.65
-            }
-          >
-            <Text
-              style={
-                styles.cancelButton
-              }
-            >
-              Cancel
-            </Text>
-          </TouchableOpacity>
+  const formatDate = (value: Date | null) => value
+    ? value.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '';
 
+  const FieldRow = ({
+    label,
+    value,
+    placeholder,
+    onPress,
+    onChangeText,
+    keyboardType = 'default',
+    multiline = false,
+    optional = false,
+    suffix = '',
+  }: any) => (
+    <Pressable
+      style={[
+        styles.v3FieldRow,
+        multiline && styles.v3FieldRowMultiline,
+      ]}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <Text style={styles.v3FieldLabel}>{label}</Text>
+
+      {onChangeText ? (
+        <View style={styles.v3InputWrap}>
+          {multiline && !value && (
+            <Text
+              pointerEvents="none"
+              style={styles.v3MultilinePlaceholder}
+            >
+              {placeholder}
+            </Text>
+          )}
+
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={multiline ? '' : placeholder}
+            placeholderTextColor={DropColors.textMuted}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            style={[
+              styles.v3FieldInput,
+              multiline && styles.v3FieldInputMultiline,
+            ]}
+            selectionColor={DropColors.wine}
+          />
+
+          {!!value && !!suffix && (
+            <Text style={styles.v3Suffix}>{suffix}</Text>
+          )}
+        </View>
+      ) : (
+        <View style={styles.v3ValueWrap}>
           <Text
-            style={
-              styles.title
-            }
+            style={[
+              styles.v3FieldValue,
+              !value && styles.v3Placeholder,
+            ]}
+            numberOfLines={1}
           >
-            New Drop
+            {value || placeholder}
           </Text>
 
-          <TouchableOpacity
-            onPress={
-              handleDrop
-            }
-            disabled={
-              disabled
-            }
-            activeOpacity={
-              0.75
-            }
-            style={[
-              styles.dropButton,
-              disabled &&
-                styles.dropButtonDisabled,
-            ]}
-          >
-            <Text
-              style={
-                styles.dropButtonText
-              }
-            >
-              {loading
-                ? '...'
-                : 'Drop'}
-            </Text>
-          </TouchableOpacity>
+          {optional && (
+            <Text style={styles.v3Optional}>OPTIONAL</Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+
+  const SelectToggleRow = ({
+    title,
+    subtitle,
+    value,
+    onPress,
+  }: {
+    title: string;
+    subtitle: string;
+    value: boolean;
+    onPress: () => void;
+  }) => (
+    <Pressable
+      style={[
+        styles.v3ModeRow,
+        value && styles.v3ModeRowActive,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.v3ModeCopy}>
+        <Text style={styles.v3RowTitle}>{title}</Text>
+        <Text style={styles.v3RowSubtitle}>{subtitle}</Text>
+      </View>
+
+      <View
+        style={[
+          styles.v3Radio,
+          value && styles.v3RadioActive,
+        ]}
+      />
+    </Pressable>
+  );
+
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <View style={styles.v3Screen}>
+        <View style={styles.v3Header}>
+          <Pressable onPress={handleCancel} disabled={loading} style={styles.v3HeaderSide}><Text style={styles.v3Cancel}>Cancel</Text></Pressable>
+          <Text style={styles.v3HeaderTitle}>New Drop</Text>
+          <Pressable onPress={handleDrop} disabled={disabled} style={styles.v3HeaderSide}><Text style={[styles.v3Save, disabled && { opacity: 0.35 }]}>{loading ? '...' : 'Drop'}</Text></Pressable>
         </View>
 
-        {loadingDefaults ? (
-          <View
-            style={
-              styles.loadingDefaults
-            }
-          >
-            <ActivityIndicator
-              color={
-                DropColors.warmWhite
-              }
-            />
-          </View>
-        ) : (
-          <ScrollView
-            style={
-              styles.scroll
-            }
-            contentContainerStyle={
-              styles.content
-            }
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={
-              false
-            }
-          >
-            {!backgroundColor && !backgroundImageUri ? (
-              <View
-                style={
-                  styles.plainComposer
-                }
-              >
-                <TextInput
-                  style={
-                    styles.plainInput
-                  }
-                  placeholder="What do you want to do?"
-                  placeholderTextColor={
-                    DropColors.textMuted
-                  }
-                  value={
-                    text
-                  }
-                  onChangeText={
-                    setText
-                  }
-                  multiline
-                  autoFocus
-                  maxLength={
-                    280
-                  }
-                  editable={
-                    !loading
-                  }
-                  selectionColor={
-                    DropColors.wine
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.counter
-                  }
-                >
-                  {text.length}/280
-                </Text>
-              </View>
-            ) : backgroundImageUri ? (
-              <View
-                style={
-                  styles.backgroundPreviewWrap
-                }
-              >
-                <ImageBackground
-                  source={{
-                    uri:
-                      backgroundImageUri,
-                  }}
-                  style={
-                    styles.backgroundImage
-                  }
-                  imageStyle={
-                    styles.backgroundImageRadius
-                  }
-                >
-                  <View
-                    style={
-                      styles.backgroundImageOverlay
-                    }
-                  >
-                    <TextInput
-                      style={
-                        styles.backgroundInput
-                      }
-                      placeholder="What do you want to do?"
-                      placeholderTextColor="rgba(255,242,228,0.62)"
-                      value={
-                        text
-                      }
-                      onChangeText={
-                        setText
-                      }
-                      multiline
-                      autoFocus
-                      maxLength={280}
-                      editable={
-                        !loading
-                      }
-                      selectionColor={
-                        DropColors.warmWhite
-                      }
-                    />
-
-                    <Text
-                      style={
-                        styles.backgroundCounter
-                      }
-                    >
-                      {text.length}/280
-                    </Text>
-                  </View>
-                </ImageBackground>
-
-                <Pressable
-                  onPress={
-                    removeBackgroundImage
-                  }
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.removeBackgroundButton,
-                    pressed &&
-                      styles.pressed,
-                  ]}
-                >
-                  <Text
-                    style={
-                      styles.removeBackgroundImageText
-                    }
-                  >
-                    ×
-                  </Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View
-                style={[
-                  styles.colorBackgroundComposer,
-                  {
-                    backgroundColor:
-                      backgroundColor ??
-                      DropColors.surface,
-                  },
-                ]}
-              >
-                <TextInput
-                  style={
-                    styles.backgroundInput
-                  }
-                  placeholder="What do you want to do?"
-                  placeholderTextColor="rgba(255,242,228,0.52)"
-                  value={text}
-                  onChangeText={
-                    setText
-                  }
-                  multiline
-                  autoFocus
-                  maxLength={280}
-                  editable={
-                    !loading
-                  }
-                  selectionColor={
-                    DropColors.warmWhite
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.backgroundCounter
-                  }
-                >
-                  {text.length}/280
-                </Text>
-              </View>
-            )}
-
-            <View
-              style={
-                styles.quickActions
-              }
-            >
-              <Pressable
-                onPress={
-                  handlePickAttachmentMedia
-                }
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.attachButton,
-                  pressed &&
-                    styles.pressed,
-                ]}
-              >
-                <MaterialIcons
-                  name="attach-file"
-                  size={22}
-                  color={
-                    pendingImage ||
-                    pendingVideo
-                      ? DropColors.warmWhite
-                      : DropColors.textSecondary
-                  }
-                />
-              </Pressable>
+        {loadingDefaults ? <View style={styles.loadingDefaults}><ActivityIndicator color={DropColors.warmWhite} /></View> : (
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.v3Content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
+            <Text style={styles.v3SectionLabel}>DROP</Text>
+            <View style={styles.v3ComposerBox}>
+              <TextInput
+                style={styles.v3MainInput}
+                placeholder="What do you want to do?"
+                placeholderTextColor={DropColors.textMuted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                maxLength={280}
+                autoFocus
+                selectionColor={DropColors.wine}
+              />
+              <Text style={styles.v3Counter}>{text.length}/280</Text>
             </View>
 
-            {!!pendingVideo && (
-              <View
-                style={
-                  styles.mediaAttachmentRow
-                }
-              >
-                <View
-                  style={
-                    styles.pendingVideoIcon
-                  }
-                >
-                  <MaterialIcons
-                    name="videocam"
-                    size={25}
-                    color={
-                      DropColors.warmWhite
-                    }
-                  />
-                </View>
-
-                <View
-                  style={
-                    styles.mediaAttachmentText
-                  }
-                >
-                  <Text
-                    style={
-                      styles.mediaAttachmentTitle
-                    }
-                  >
-                    Video attached
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.mediaAttachmentSubtitle
-                    }
-                  >
-                    {(pendingVideo.fileSize /
-                      1024 /
-                      1024).toFixed(1)} MB · max 50 MB
-                  </Text>
-                </View>
-
-                <Pressable
-                  onPress={
-                    removeAttachmentMedia
-                  }
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.mediaRemoveButton,
-                    pressed &&
-                      styles.pressed,
-                  ]}
-                >
-                  <MaterialIcons
-                    name="close"
-                    size={20}
-                    color={
-                      DropColors.textSecondary
-                    }
-                  />
-                </Pressable>
+            {(pendingImage || pendingVideo) && (
+              <View style={styles.v3MediaState}>
+                <MaterialIcons name={pendingVideo ? 'videocam' : 'image'} size={20} color={DropColors.warmWhite} />
+                <Text style={styles.v3MediaText}>{pendingVideo ? 'Video attached' : 'Photo attached'}</Text>
+                <Pressable onPress={removeAttachmentMedia} hitSlop={8}><Text style={styles.v3Remove}>×</Text></Pressable>
               </View>
             )}
-
-            {!!pendingImage && (
-              <View
-                style={
-                  styles.attachmentPreviewWrap
-                }
-              >
-                <ImageBackground
-                  source={{
-                    uri:
-                      pendingImage.uri,
-                  }}
-                  style={
-                    styles.attachmentPreview
-                  }
-                  imageStyle={
-                    styles.attachmentPreviewImage
-                  }
-                />
-
-                <Pressable
-                  onPress={
-                    removeAttachmentMedia
-                  }
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.removeAttachmentButton,
-                    pressed &&
-                      styles.pressed,
-                  ]}
-                >
-                  <Text
-                    style={
-                      styles.removeImageText
-                    }
-                  >
-                    ×
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-
-            <View
-              style={
-                styles.section
-              }
-            >
-              <Text
-                style={
-                  styles.sectionLabel
-                }
-              >
-                BACKGROUND
-              </Text>
-
-              <View
-                style={
-                  styles.backgroundRow
-                }
-              >
-                {BACKGROUND_OPTIONS.map(
-                  (
-                    option
-                  ) => {
-                    const selected =
-                      !backgroundImageUri &&
-                      backgroundColor ===
-                        option.value;
-
-                    return (
-                      <Pressable
-                        key={
-                          option.label
-                        }
-                        onPress={() => {
-                          removeBackgroundImage();
-                          setBackgroundColor(
-                            option.value
-                          );
-                        }}
-                        style={({ pressed }) => [
-                          styles.backgroundOption,
-                          {
-                            backgroundColor:
-                              option.swatch,
-                          },
-                          selected &&
-                            styles.backgroundOptionSelected,
-                          pressed &&
-                            styles.pressed,
-                        ]}
-                      >
-                        {option.value ===
-                          null && (
-                          <View
-                            style={
-                              styles.noBackgroundMark
-                            }
-                          />
-                        )}
-
-                        {selected && (
-                          <View
-                            style={
-                              styles.backgroundSelectedDot
-                            }
-                          />
-                        )}
-                      </Pressable>
-                    );
-                  }
-                )}
-
-                <Pressable
-                  onPress={
-                    handlePickBackgroundImage
-                  }
-                  style={({ pressed }) => [
-                    styles.customBackgroundOption,
-                    backgroundImageUri &&
-                      styles.backgroundOptionSelected,
-                    pressed &&
-                      styles.pressed,
-                  ]}
-                >
-                  {backgroundImageUri ? (
-                    <ImageBackground
-                      source={{
-                        uri:
-                          backgroundImageUri,
-                      }}
-                      style={
-                        styles.customBackgroundThumbnail
-                      }
-                      imageStyle={{
-                        borderRadius:
-                          21,
-                      }}
-                    />
-                  ) : (
-                    <MaterialIcons
-                      name="add-photo-alternate"
-                      size={20}
-                      color={
-                        DropColors.textSecondary
-                      }
-                    />
-                  )}
-                </Pressable>
-              </View>
-
-              <Text
-                style={
-                  styles.backgroundHelp
-                }
-              >
-                No background keeps the Drop as plain text. Choose a color or use Custom to place text over a photo.
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() =>
-                setShowMoreOptions(
-                  (
-                    current
-                  ) =>
-                    !current
-                )
-              }
-              style={({ pressed }) => [
-                styles.moreOptionsButton,
-                pressed &&
-                  styles.pressed,
-              ]}
-            >
-              <View>
-                <Text
-                  style={
-                    styles.moreOptionsTitle
-                  }
-                >
-                  More options
-                </Text>
-
-                <Text
-                  style={
-                    styles.moreOptionsSubtitle
-                  }
-                >
-                  Location, Join limit, age and interactions
-                </Text>
-              </View>
-
-              <Text
-                style={
-                  styles.moreOptionsChevron
-                }
-              >
-                {showMoreOptions
-                  ? '−'
-                  : '+'}
-              </Text>
+            <Pressable style={styles.v3ActionRow} onPress={handlePickAttachmentMedia}>
+              <View><Text style={styles.v3RowTitle}>Media</Text><Text style={styles.v3RowSubtitle}>Attach a photo or video</Text></View>
+              <MaterialIcons name="attach-file" size={21} color={DropColors.warmWhite} />
             </Pressable>
 
-            {showMoreOptions && (
-              <View
-                style={
-                  styles.advanced
-                }
-              >
-                <View
-                  style={
-                    styles.section
-                  }
-                >
-                  <Text
-                    style={
-                      styles.sectionLabel
-                    }
-                  >
-                    LOCATION
-                  </Text>
-
-                  <TextInput
-                    value={
-                      locationText
-                    }
-                    onChangeText={
-                      setLocationText
-                    }
-                    placeholder="e.g. Old Riga, Esplanāde, home"
-                    placeholderTextColor={
-                      DropColors.textMuted
-                    }
-                    style={
-                      styles.singleLineInput
-                    }
-                    maxLength={
-                      80
-                    }
-                    editable={
-                      !loading
-                    }
-                    selectionColor={
-                      DropColors.wine
-                    }
+            <Text style={styles.v3SectionLabel}>APPEARANCE</Text>
+            <View style={styles.v3BackgroundRow}>
+              {BACKGROUND_OPTIONS.map((option) => {
+                const selected = !backgroundImageUri && backgroundColor === option.value;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => {
+                      removeBackgroundImage();
+                      setBackgroundColor(option.value);
+                    }}
+                    style={[
+                      styles.v3BackgroundOption,
+                      { backgroundColor: option.swatch },
+                      selected && styles.v3BackgroundSelected,
+                    ]}
                   />
-                </View>
+                );
+              })}
+              <Pressable
+                onPress={handlePickBackgroundImage}
+                style={[
+                  styles.v3BackgroundOption,
+                  styles.v3CustomBackground,
+                  !!backgroundImageUri && styles.v3BackgroundSelected,
+                ]}
+              >
+                <MaterialIcons name="add-photo-alternate" size={19} color={DropColors.textSecondary} />
+              </Pressable>
+            </View>
+            <Text style={styles.v3Help}>
+              Background is optional and only changes the visual presentation of the Drop.
+            </Text>
 
-                <View
-                  style={
-                    styles.section
+            <Pressable
+              style={styles.v3AdditionalHeader}
+              onPress={() => setAdditionalOptionsOpen((value) => !value)}
+            >
+              <Text style={styles.v3AdditionalTitle}>Additional options</Text>
+              <MaterialIcons
+                name={additionalOptionsOpen ? 'expand-less' : 'expand-more'}
+                size={22}
+                color={DropColors.warmWhite}
+              />
+            </Pressable>
+
+            {additionalOptionsOpen && (
+              <View>
+                <Text style={styles.v3SectionLabel}>WHEN</Text>
+                <FieldRow
+                  label="Starts"
+                  value={formatDate(eventStart)}
+                  placeholder="Add date & time"
+                  onPress={() => setDatePicker('start')}
+                />
+                <FieldRow
+                  label="Ends"
+                  value={formatDate(eventEnd)}
+                  placeholder="Add date & time"
+                  onPress={() => setDatePicker('end')}
+                />
+
+                <Text style={styles.v3SectionLabel}>LOCATION</Text>
+                <FieldRow
+                  label="Location"
+                  value={locationText}
+                  placeholder="Optional"
+                  onChangeText={setLocationText}
+                />
+
+                <Text style={styles.v3SectionLabel}>AGE</Text>
+                <FieldRow
+                  label="Age"
+                  value={ageRestriction}
+                  placeholder="Optional"
+                  keyboardType="number-pad"
+                  onChangeText={(value: string) =>
+                    setAgeRestriction(value.replace(/[^0-9]/g, '').slice(0, 2))
                   }
-                >
-                  <Text
-                    style={
-                      styles.sectionLabel
-                    }
-                  >
-                    AGE
-                  </Text>
+                  suffix="+"
+                />
 
-                  <View
-                    style={
-                      styles.chipRow
-                    }
-                  >
-                    {AGE_OPTIONS.map(
-                      (
-                        option
-                      ) => {
-                        const selected =
-                          ageRestriction ===
-                          option.value;
+                <Text style={styles.v3SectionLabel}>EVENT DETAILS</Text>
+                <FieldRow
+                  label="Dress code"
+                  value={dressCode}
+                  placeholder="Optional"
+                  onChangeText={setDressCode}
+                />
+                <FieldRow
+                  label="Price"
+                  value={priceText}
+                  placeholder="Optional"
+                  onChangeText={setPriceText}
+                />
+                <FieldRow
+                  label="Language"
+                  value={languageText}
+                  placeholder="Optional"
+                  onChangeText={setLanguageText}
+                />
+                <FieldRow
+                  label="Conditions"
+                  value={conditions}
+                  placeholder="Optional"
+                  onChangeText={setConditions}
+                  multiline
+                />
+                <FieldRow
+                  label="Hashtags"
+                  value={hashtags}
+                  placeholder="#riga #rave · optional"
+                  onChangeText={setHashtags}
+                />
 
-                        return (
-                          <Pressable
-                            key={
-                              option.value
-                            }
-                            onPress={() =>
-                              setAgeRestriction(
-                                option.value
-                              )
-                            }
-                            style={[
-                              styles.chip,
-                              selected &&
-                                styles.chipSelected,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.chipText,
-                                selected &&
-                                  styles.chipTextSelected,
-                              ]}
-                            >
-                              {
-                                option.label
-                              }
-                            </Text>
-                          </Pressable>
-                        );
-                      }
-                    )}
-                  </View>
-                </View>
-
-                <View
-                  style={
-                    styles.section
-                  }
-                >
-                  <Text
-                    style={
-                      styles.sectionLabel
-                    }
-                  >
-                    INTERACTIONS
-                  </Text>
-
-                  <View
-                    style={
-                      styles.optionCard
-                    }
-                  >
-                    <View
-                      style={
-                        styles.optionRow
-                      }
-                    >
-                      <View
-                        style={
-                          styles.optionText
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.optionName
-                          }
-                        >
-                          Join
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.optionDescription
-                          }
-                        >
-                          People can request to join this Drop.
-                        </Text>
-                      </View>
-
-                      <Switch
-                        value={
-                          joinEnabled
-                        }
-                        onValueChange={
-                          setJoinEnabled
-                        }
-                        disabled={
-                          loading
-                        }
-                        trackColor={{
-                          false:
-                            DropColors.border,
-                          true:
-                            DropColors.wine,
-                        }}
-                        thumbColor={
-                          DropColors.warmWhite
-                        }
-                      />
-                    </View>
-
-                    <View
-                      style={[
-                        styles.optionRow,
-                        styles.optionRowBorder,
-                      ]}
-                    >
-                      <View
-                        style={
-                          styles.optionText
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.optionName
-                          }
-                        >
-                          Reply
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.optionDescription
-                          }
-                        >
-                          People can reply to this Drop in DM.
-                        </Text>
-                      </View>
-
-                      <Switch
-                        value={
-                          replyEnabled
-                        }
-                        onValueChange={
-                          setReplyEnabled
-                        }
-                        disabled={
-                          loading
-                        }
-                        trackColor={{
-                          false:
-                            DropColors.border,
-                          true:
-                            DropColors.wine,
-                        }}
-                        thumbColor={
-                          DropColors.warmWhite
-                        }
-                      />
-                    </View>
-                  </View>
-                </View>
-
+                <Text style={styles.v3SectionLabel}>PARTICIPATION</Text>
+                <SelectToggleRow
+                  title="Join"
+                  subtitle="Allow people to participate in this Drop."
+                  value={joinEnabled}
+                  onPress={() => setJoinEnabled((value) => !value)}
+                />
                 {joinEnabled && (
                   <>
-                    <View
-                      style={
-                        styles.section
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.sectionLabel
-                        }
-                      >
-                        JOIN LIMIT
-                      </Text>
-
-                      <TextInput
-                        value={
-                          joinLimitText
-                        }
-                        onChangeText={(
-                          value
-                        ) =>
-                          setJoinLimitText(
-                            value.replace(
-                              /[^0-9]/g,
-                              ''
-                            )
-                          )
-                        }
-                        placeholder="No limit"
-                        placeholderTextColor={
-                          DropColors.textMuted
-                        }
-                        style={
-                          styles.singleLineInput
-                        }
-                        keyboardType="number-pad"
-                        maxLength={
-                          4
-                        }
-                        editable={
-                          !loading
-                        }
-                        selectionColor={
-                          DropColors.wine
-                        }
-                      />
-
-                      <Text
-                        style={
-                          styles.helpText
-                        }
-                      >
-                        Leave empty for unlimited Join requests.
-                      </Text>
+                    <View style={styles.v3ModeBox}>
+                      {([
+                        ['request', 'Request to join', 'Organizer approves each request.'],
+                        ['free', 'Free join', 'People join immediately without approval.'],
+                        ['invite_only', 'Invite only', 'Only organizer invitations can add people.'],
+                      ] as const).map(([value, title, subtitle]) => (
+                        <Pressable
+                          key={value}
+                          style={[
+                            styles.v3ModeRow,
+                            joinMode === value && styles.v3ModeRowActive,
+                          ]}
+                          onPress={() => setJoinMode(value)}
+                        >
+                          <View style={styles.v3ModeCopy}>
+                            <Text style={styles.v3RowTitle}>{title}</Text>
+                            <Text style={styles.v3RowSubtitle}>{subtitle}</Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.v3Radio,
+                              joinMode === value && styles.v3RadioActive,
+                            ]}
+                          />
+                        </Pressable>
+                      ))}
                     </View>
-
-                    <View
-                      style={
-                        styles.section
+                    <FieldRow
+                      label="Capacity"
+                      value={joinLimitText}
+                      placeholder="Unlimited"
+                      keyboardType="number-pad"
+                      onChangeText={(value: string) =>
+                        setJoinLimitText(value.replace(/[^0-9]/g, ''))
                       }
-                    >
-                      <Text
-                        style={
-                          styles.sectionLabel
-                        }
-                      >
-                        JOIN TIMER
-                      </Text>
-
-                      <View
-                        style={
-                          styles.chipRow
-                        }
-                      >
-                        {JOIN_TIMER_OPTIONS.map(
-                          (
-                            option
-                          ) => {
-                            const selected =
-                              joinTimer ===
-                              option.value;
-
-                            return (
-                              <Pressable
-                                key={
-                                  option.value
-                                }
-                                onPress={() =>
-                                  setJoinTimer(
-                                    option.value
-                                  )
-                                }
-                                style={[
-                                  styles.chip,
-                                  selected &&
-                                    styles.chipSelected,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.chipText,
-                                    selected &&
-                                      styles.chipTextSelected,
-                                  ]}
-                                >
-                                  {
-                                    option.label
-                                  }
-                                </Text>
-                              </Pressable>
-                            );
-                          }
-                        )}
-                      </View>
-
-                      <Text
-                        style={
-                          styles.helpText
-                        }
-                      >
-                        Join closes automatically when the timer ends.
-                      </Text>
-                    </View>
+                    />
                   </>
                 )}
-
-                <Text
-                  style={
-                    styles.defaultsHelp
-                  }
-                >
-                  Join and Reply start from your Settings defaults. Changes here only affect this Drop.
-                </Text>
+                <SelectToggleRow
+                  title="Reply"
+                  subtitle="Allow people to reply privately to this Drop."
+                  value={replyEnabled}
+                  onPress={() => setReplyEnabled((value) => !value)}
+                />
+                <SelectToggleRow
+                  title="Comments"
+                  subtitle="Public questions and discussion under the Drop."
+                  value={commentsEnabled}
+                  onPress={() => setCommentsEnabled((value) => !value)}
+                />
               </View>
             )}
           </ScrollView>
         )}
-      </Pressable>
+      </View>
+
+      <DropDateTimePicker
+        visible={datePicker !== null}
+        title={datePicker === 'end' ? 'Drop ends' : 'Drop starts'}
+        value={datePicker === 'end' ? eventEnd : eventStart}
+        minimumDate={datePicker === 'end' ? (eventStart ?? new Date()) : new Date()}
+        onClose={() => setDatePicker(null)}
+        onConfirm={(date) => {
+          if (datePicker === 'end') {
+            if (eventStart && date <= eventStart) { Alert.alert('End time', 'End time must be later than start time.'); return; }
+            setEventEnd(date);
+          } else {
+            setEventStart(date);
+            if (eventEnd && eventEnd <= date) setEventEnd(null);
+          }
+          setDatePicker(null);
+        }}
+      />
+
 
       <Modal
         visible={
@@ -2065,6 +1504,7 @@ export default function CreateScreen() {
         }
       >
         {!!photoEditorSource && (
+
           <PhotoEditor
             uri={
               photoEditorSource.uri
@@ -2109,6 +1549,7 @@ export default function CreateScreen() {
 
 const styles =
   StyleSheet.create({
+
     container: {
       flex: 1,
       backgroundColor:
@@ -2514,6 +1955,34 @@ const styles =
         DropColors.warmWhite,
     },
 
+    v2Section: {
+      marginTop: 18,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: DropColors.border,
+      paddingBottom: 8,
+    },
+    v2DateRow: {
+      minHeight: 54,
+      paddingHorizontal: 2,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    v2DateLabel: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+    },
+    v2DateValue: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+    },
+    v2DatePlaceholder: {
+      color: DropColors.textMuted,
+    },
+
     moreOptionsButton: {
       marginHorizontal: 18,
       marginTop: 22,
@@ -2681,4 +2150,316 @@ const styles =
     pressed: {
       opacity: 0.65,
     },
-  });
+
+    v3Screen: {
+      flex: 1,
+      backgroundColor: DropColors.graphite,
+    },
+    v3Header: {
+      paddingTop: 52,
+      minHeight: 96,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3HeaderSide: {
+      width: 70,
+    },
+    v3Cancel: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+    },
+    v3Save: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+      textAlign: 'right',
+    },
+    v3HeaderTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.semibold,
+      fontSize: 16,
+    },
+    v3Content: {
+      paddingBottom: 64,
+    },
+    v3SectionLabel: {
+      marginTop: 0,
+      paddingTop: 18,
+      paddingBottom: 8,
+      paddingHorizontal: 18,
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.medium,
+      fontSize: 10,
+      letterSpacing: 1.2,
+    },
+    v3ComposerBox: {
+      position: 'relative',
+      minHeight: 144,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3MainInput: {
+      minHeight: 144,
+      paddingHorizontal: 18,
+      paddingTop: 12,
+      paddingBottom: 32,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.regular,
+      fontSize: 20,
+      lineHeight: 27,
+      textAlignVertical: 'top',
+    },
+    v3Counter: {
+      position: 'absolute',
+      right: 18,
+      bottom: 10,
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 10,
+      textAlign: 'right',
+    },
+    v3FieldRow: {
+      minHeight: 58,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3FieldRowMultiline: {
+      minHeight: 82,
+      alignItems: 'center',
+    },
+    v3FieldLabel: {
+      width: 92,
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.regular,
+      fontSize: 12,
+    },
+    v3FieldInput: {
+      flex: 1,
+      minWidth: 0,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+      paddingVertical: 10,
+      textAlign: 'right',
+    },
+    v3FieldInputMultiline: {
+      minHeight: 64,
+      paddingVertical: 0,
+      textAlign: 'right',
+      textAlignVertical: 'center',
+    },
+    v3MultilinePlaceholder: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      textAlignVertical: 'center',
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+      includeFontPadding: false,
+    },
+    v3FieldValue: {
+      flex: 1,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+      textAlign: 'right',
+    },
+    v3Placeholder: {
+      color: DropColors.textMuted,
+    },
+    v3InputWrap: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+    },
+    v3ValueWrap: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 14,
+    },
+    v3Optional: {
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.medium,
+      fontSize: 9,
+      letterSpacing: 0.8,
+    },
+    v3Suffix: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+      marginLeft: 2,
+    },
+    v3SwitchRow: {
+      minHeight: 72,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3ModeBox: {
+    },
+    v3ModeRow: {
+      minHeight: 66,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3ModeRowActive: {
+      backgroundColor: '#151515',
+    },
+    v3ModeCopy: {
+      flex: 1,
+      paddingRight: 14,
+    },
+    v3RowTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+    },
+    v3RowSubtitle: {
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 10,
+      lineHeight: 14,
+      marginTop: 3,
+    },
+    v3Radio: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: DropColors.textMuted,
+    },
+    v3RadioActive: {
+      borderWidth: 5,
+      borderColor: DropColors.wine,
+    },
+    v3AdditionalHeader: {
+      minHeight: 62,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: DropColors.border,
+    },
+    v3AdditionalTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 13,
+    },
+    v3ActionRow: {
+      minHeight: 64,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3MediaState: {
+      minHeight: 52,
+      paddingHorizontal: 18,
+      backgroundColor: '#151515',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3MediaText: {
+      flex: 1,
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.regular,
+      fontSize: 12,
+    },
+    v3Remove: {
+      color: DropColors.textMuted,
+      fontSize: 20,
+    },
+    v3AgeRow: {
+      minHeight: 70,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: DropColors.border,
+    },
+    v3AgeOptions: {
+      flex: 1,
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 6,
+      flexWrap: 'wrap',
+    },
+    v3AgeChip: {
+      minHeight: 30,
+      paddingHorizontal: 10,
+      borderRadius: 15,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: DropColors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    v3AgeChipActive: {
+      backgroundColor: DropColors.wine,
+      borderColor: DropColors.wine,
+    },
+    v3AgeText: {
+      color: DropColors.textSecondary,
+      fontFamily: DropTypography.medium,
+      fontSize: 10,
+    },
+    v3AgeTextActive: {
+      color: DropColors.warmWhite,
+    },
+    v3BackgroundRow: {
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'center',
+    },
+    v3BackgroundOption: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1,
+      borderColor: DropColors.border,
+    },
+    v3BackgroundSelected: {
+      borderWidth: 2,
+      borderColor: DropColors.warmWhite,
+    },
+    v3CustomBackground: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#151515',
+    },
+    v3Help: {
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 10,
+      lineHeight: 15,
+      paddingHorizontal: 18,
+      marginTop: 10,
+    },
+});

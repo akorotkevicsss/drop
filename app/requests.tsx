@@ -224,168 +224,46 @@ export default function RequestsScreen() {
     }
   };
 
-      const updateRequest = async (
-      requestId: string,
-      status: 'accepted' | 'declined'
-    ) => {
-      try {
-        setUpdatingId(requestId);
+  const updateRequest = async (
+    requestId: string,
+    status: 'accepted' | 'declined'
+  ) => {
+    try {
+      setUpdatingId(requestId);
 
-        const request = requests.find(
-          (item) => item.id === requestId
-        );
+      const request = requests.find(
+        (item) => item.id === requestId
+      );
 
-        if (!request) {
-          Alert.alert(
-            'Error',
-            'Join request not found.'
-          );
-
-          return;
-        }
-
-        const { error } = await supabase
-          .from('join_requests')
-          .update({
-            status,
-          })
-          .eq('id', requestId);
-
-        if (error) {
-          console.error(
-            'UPDATE JOIN REQUEST ERROR:',
-            error
-          );
-
-          Alert.alert(
-            'Error',
-            `Could not ${
-              status === 'accepted'
-                ? 'accept'
-                : 'decline'
-            } this request.`
-          );
-
-          return;
-        }
-
-        setRequests((current) =>
-          current.map((item) =>
-            item.id === requestId
-              ? {
-                  ...item,
-                  status,
-                }
-              : item
-          )
-        );
-
-        // Decline ничего больше не делает.
-        if (status !== 'accepted') {
-          return;
-        }
-
-        /*
-        * После Accept backend создаёт unified conversation
-        * или использует уже существующий.
-        *
-        * Ищем чат между:
-        *   author_id      = автор Drop (мы)
-        *   participant_id = пользователь, которого приняли
-        */
-
-        const findConversation = async () => {
-          /*
-           * Unified DM не имеет постоянного направления.
-           *
-           * Если первый контакт когда-то создал чат как:
-           *   A -> B
-           *
-           * следующий Join может прийти в контексте:
-           *   B -> A
-           *
-           * Поэтому ищем conversation в ОБЕ стороны.
-           */
-          const authorId =
-            drop!.author_id;
-
-          const participantId =
-            request.user_id;
-
-          const {
-            data: conversation,
-            error: conversationError,
-          } = await supabase
-            .from('conversations')
-            .select('id')
-            .or(
-              `and(author_id.eq.${authorId},participant_id.eq.${participantId}),and(author_id.eq.${participantId},participant_id.eq.${authorId})`
-            )
-            .limit(1)
-            .maybeSingle();
-
-          if (conversationError) {
-            console.error(
-              'FIND UNIFIED CONVERSATION AFTER ACCEPT ERROR:',
-              conversationError
-            );
-
-            return null;
-          }
-
-          return conversation;
-        };
-
-        /*
-        * Trigger выполняется на backend.
-        * Обычно conversation уже существует к моменту,
-        * когда UPDATE вернулся.
-        *
-        * Но оставляем несколько коротких попыток,
-        * чтобы UI не зависел от тайминга.
-        */
-
-        let conversation =
-          await findConversation();
-
-        if (!conversation) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 150)
-          );
-
-          conversation =
-            await findConversation();
-        }
-
-        if (!conversation) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 300)
-          );
-
-          conversation =
-            await findConversation();
-        }
-
-        if (!conversation) {
-          console.error(
-            'Conversation was not found after accepting Join request.'
-          );
-
-          Alert.alert(
-            'Joined',
-            'The request was accepted, but the conversation could not be opened automatically.'
-          );
-
-          return;
-        }
-
-        router.replace(
-          `/chat/${conversation.id}`
-        );
-      } finally {
-        setUpdatingId(null);
+      if (!request) {
+        Alert.alert('Error', 'Join request not found.');
+        return;
       }
-    };
+
+      const { error } = await supabase
+        .from('join_requests')
+        .update({ status })
+        .eq('id', requestId);
+
+      if (error) {
+        console.error('UPDATE JOIN REQUEST ERROR:', error);
+        Alert.alert(
+          'Error',
+          `Could not ${status === 'accepted' ? 'accept' : 'decline'} this request.`
+        );
+        return;
+      }
+
+      // Accept/Decline removes the item from Requests.
+      // The backend still creates/reuses the conversation after Accept.
+      // We intentionally stay on this screen instead of opening the chat.
+      setRequests((current) =>
+        current.filter((item) => item.id !== requestId)
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -468,20 +346,6 @@ export default function RequestsScreen() {
       (request) =>
         request.status ===
         'pending'
-    );
-
-  const acceptedRequests =
-    requests.filter(
-      (request) =>
-        request.status ===
-        'accepted'
-    );
-
-  const declinedRequests =
-    requests.filter(
-      (request) =>
-        request.status ===
-        'declined'
     );
 
   return (
@@ -691,190 +555,7 @@ export default function RequestsScreen() {
           </>
         )}
 
-        {acceptedRequests.length >
-          0 && (
-          <>
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              JOINED
-            </Text>
-
-            {acceptedRequests.map(
-              (request) => {
-                const name =
-                  request.profile
-                    ?.display_name ||
-                  'Unnamed user';
-
-                const username =
-                  request.profile
-                    ?.username;
-
-                return (
-                  <View
-                    key={
-                      request.id
-                    }
-                    style={
-                      styles.requestRow
-                    }
-                  >
-                    <Pressable
-                      style={
-                        styles.person
-                      }
-                      onPress={() => {
-                        if (
-                          username
-                        ) {
-                          router.push(
-                            `/user/${username}`
-                          );
-                        }
-                      }}
-                    >
-                      <View
-                        style={
-                          styles.avatar
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.avatarText
-                          }
-                        >
-                          {name
-                            .charAt(0)
-                            .toUpperCase()}
-                        </Text>
-                      </View>
-
-                      <View>
-                        <Text
-                          style={
-                            styles.name
-                          }
-                        >
-                          {name}
-                        </Text>
-
-                        {!!username && (
-                          <Text
-                            style={
-                              styles.username
-                            }
-                          >
-                            @{username}
-                          </Text>
-                        )}
-                      </View>
-                    </Pressable>
-
-                    <Text
-                      style={
-                        styles.joinedText
-                      }
-                    >
-                      Joined
-                    </Text>
-                  </View>
-                );
-              }
-            )}
-          </>
-        )}
-
-        {declinedRequests.length >
-          0 && (
-          <>
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              DECLINED
-            </Text>
-
-            {declinedRequests.map(
-              (request) => {
-                const name =
-                  request.profile
-                    ?.display_name ||
-                  'Unnamed user';
-
-                const username =
-                  request.profile
-                    ?.username;
-
-                return (
-                  <View
-                    key={
-                      request.id
-                    }
-                    style={
-                      styles.requestRow
-                    }
-                  >
-                    <View
-                      style={
-                        styles.person
-                      }
-                    >
-                      <View
-                        style={
-                          styles.avatar
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.avatarText
-                          }
-                        >
-                          {name
-                            .charAt(0)
-                            .toUpperCase()}
-                        </Text>
-                      </View>
-
-                      <View>
-                        <Text
-                          style={
-                            styles.name
-                          }
-                        >
-                          {name}
-                        </Text>
-
-                        {!!username && (
-                          <Text
-                            style={
-                              styles.username
-                            }
-                          >
-                            @{username}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-
-                    <Text
-                      style={
-                        styles.declinedStatus
-                      }
-                    >
-                      Declined
-                    </Text>
-                  </View>
-                );
-              }
-            )}
-          </>
-        )}
-
-        {requests.length === 0 && (
+        {pendingRequests.length === 0 && (
           <View
             style={
               styles.emptyContainer
@@ -885,7 +566,7 @@ export default function RequestsScreen() {
                 styles.emptyText
               }
             >
-              No requests yet.
+              No more requests.
             </Text>
           </View>
         )}

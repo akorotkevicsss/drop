@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,9 +29,34 @@ type Drop = {
   id: string;
   text: string;
   city: string | null;
+  location_text: string | null;
+  event_time: string | null;
+  event_end_time: string | null;
+  status: string | null;
   created_at: string;
+  background_color: string | null;
+  image_path: string | null;
+  attached_image_path: string | null;
 };
 
+
+function formatEventRange(startValue: string | null, endValue: string | null) {
+  if (!startValue) return null;
+  const start = new Date(startValue); if (Number.isNaN(start.getTime())) return null;
+  const date = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
+  const st = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (!endValue) return `${date} · ${st}`;
+  const end = new Date(endValue); if (Number.isNaN(end.getTime())) return `${date} · ${st}`;
+  const et = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const same = start.toDateString() === end.toDateString();
+  return same ? `${date} · ${st}–${et}` : `${date} ${st} → ${end.toLocaleDateString('en-GB',{day:'numeric',month:'short'}).toUpperCase()} ${et}`;
+}
+function dropStatusLabel(status: string | null | undefined, endValue: string | null) {
+  if (status === 'cancelled') return 'CANCELLED';
+  if (status === 'ended') return 'ENDED';
+  if (endValue && new Date(endValue).getTime() < Date.now()) return 'ENDED';
+  return null;
+}
 function formatDropTime(createdAt: string) {
   const minutes = Math.floor(
     (Date.now() - new Date(createdAt).getTime()) / 60000
@@ -87,7 +113,19 @@ export default function ProfileScreen() {
 
       const { data: dropData, error: dropsError } = await supabase
         .from('drops')
-        .select('id, text, city, created_at')
+        .select(`
+          id,
+          text,
+          city,
+          location_text,
+          event_time,
+          event_end_time,
+          status,
+          created_at,
+          background_color,
+          image_path,
+          attached_image_path
+        `)
         .eq('author_id', user.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
@@ -226,15 +264,85 @@ export default function ProfileScreen() {
             </Text>
           </View>
         ) : (
-          myDrops.map((drop) => (
-            <View key={drop.id} style={styles.drop}>
-              <Text style={styles.dropText}>{drop.text}</Text>
-              <Text style={styles.dropMeta}>
-                {drop.city ? `${drop.city} · ` : ''}
-                {formatDropTime(drop.created_at)}
-              </Text>
-            </View>
-          ))
+          myDrops.map((drop) => {
+            const imageUrl =
+              drop.image_path
+                ? supabase.storage
+                    .from('drop-images')
+                    .getPublicUrl(drop.image_path)
+                    .data.publicUrl
+                : null;
+
+            const attachedImageUrl =
+              drop.attached_image_path
+                ? supabase.storage
+                    .from('drop-images')
+                    .getPublicUrl(drop.attached_image_path)
+                    .data.publicUrl
+                : null;
+
+            const hasBackground =
+              !!drop.background_color ||
+              !!imageUrl;
+
+            const location =
+              drop.location_text ||
+              drop.city;
+
+            return (
+              <Pressable key={drop.id} style={styles.drop} onPress={() => router.push({ pathname: '/drop/[id]', params: { id: drop.id } } as any)}>
+                {hasBackground ? (
+                  imageUrl ? (
+                    <ImageBackground
+                      source={{ uri: imageUrl }}
+                      style={styles.dropVisual}
+                      imageStyle={styles.dropVisualImage}
+                    >
+                      <View style={styles.dropVisualOverlay}>
+                        <Text style={styles.dropVisualText}>
+                          {drop.text}
+                        </Text>
+                      </View>
+                    </ImageBackground>
+                  ) : (
+                    <View
+                      style={[
+                        styles.dropVisual,
+                        {
+                          backgroundColor:
+                            drop.background_color ??
+                            DropColors.surface,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.dropVisualText}>
+                        {drop.text}
+                      </Text>
+                    </View>
+                  )
+                ) : (
+                  <Text style={styles.dropText}>
+                    {drop.text}
+                  </Text>
+                )}
+
+                {!!attachedImageUrl && (
+                  <ImageBackground
+                    source={{ uri: attachedImageUrl }}
+                    style={styles.attachedImage}
+                    imageStyle={styles.attachedImageRadius}
+                  />
+                )}
+
+                {dropStatusLabel(drop.status, drop.event_end_time) && <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{dropStatusLabel(drop.status, drop.event_end_time)}</Text></View>}
+                {!!formatEventRange(drop.event_time, drop.event_end_time) && <Text style={styles.eventMeta}>◷  {formatEventRange(drop.event_time, drop.event_end_time)}</Text>}
+                <Text style={styles.dropMeta}>
+                  {location ? `${location} · ` : ''}
+                  {formatDropTime(drop.created_at)}
+                </Text>
+              </Pressable>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -397,6 +505,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
+  dropVisual: {
+    minHeight: 180,
+    borderRadius: 16,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+  },
+  dropVisualImage: {
+    borderRadius: 16,
+  },
+  dropVisualOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+  },
+  dropVisualText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 20,
+    lineHeight: 26,
+  },
+  attachedImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    marginTop: 14,
+    overflow: 'hidden',
+  },
+  attachedImageRadius: {
+    borderRadius: 16,
+  },
+  statusBadge: { alignSelf: 'flex-start', marginTop: 9, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#2A1717', borderWidth: StyleSheet.hairlineWidth, borderColor: DropColors.wine },
+  statusBadgeText: { color: DropColors.warmWhite, fontFamily: DropTypography.semibold, fontSize: 9, letterSpacing: 1 },
+  eventMeta: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 11, marginTop: 8 },
   dropMeta: {
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,

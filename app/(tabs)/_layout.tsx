@@ -11,15 +11,9 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/lib/supabase';
 
-type ConversationRow = {
-  id: string;
-  author_id: string;
-  participant_id: string;
-};
-
-type ReadRow = {
+type MembershipRow = {
   conversation_id: string;
-  last_read_at: string;
+  last_read_at: string | null;
 };
 
 type MessageRow = {
@@ -182,97 +176,20 @@ export default function TabLayout() {
 
         try {
           /*
-           * RLS должен вернуть только conversations,
-           * участником которых является текущий user.
+           * Messages 2.0:
+           * conversation_members — единый источник membership
+           * и last_read_at.
            */
 
           let {
             data:
-              conversationData,
+              membershipData,
             error:
-              conversationError,
+              membershipError,
           } =
             await supabase
               .from(
-                'conversations'
-              )
-              .select(`
-                id,
-                author_id,
-                participant_id
-              `);
-
-          if (
-            isJwtIssuedAtFutureError(
-              conversationError
-            )
-          ) {
-            await sleep(1200);
-
-            const retryResult =
-              await supabase
-                .from(
-                  'conversations'
-                )
-                .select(`
-                  id,
-                  author_id,
-                  participant_id
-                `);
-
-            conversationData =
-              retryResult.data;
-
-            conversationError =
-              retryResult.error;
-          }
-
-          if (
-            conversationError
-          ) {
-            console.error(
-              'BADGE CONVERSATIONS ERROR:',
-              conversationError
-            );
-
-            return;
-          }
-
-          const conversations =
-            (
-              conversationData ??
-              []
-            ) as ConversationRow[];
-
-          if (
-            conversations.length ===
-            0
-          ) {
-            setUnreadCount(0);
-            return;
-          }
-
-          const conversationIds =
-            conversations.map(
-              (
-                conversation
-              ) =>
-                conversation.id
-            );
-
-          /*
-           * Берём last_read_at текущего пользователя.
-           */
-
-          const {
-            data:
-              readData,
-            error:
-              readError,
-          } =
-            await supabase
-              .from(
-                'conversation_reads'
+                'conversation_members'
               )
               .select(`
                 conversation_id,
@@ -282,31 +199,76 @@ export default function TabLayout() {
                 'user_id',
                 userId
               )
-              .in(
-                'conversation_id',
-                conversationIds
+              .is(
+                'left_at',
+                null
               );
 
           if (
-            readError
+            isJwtIssuedAtFutureError(
+              membershipError
+            )
+          ) {
+            await sleep(1200);
+
+            const retryResult =
+              await supabase
+                .from(
+                  'conversation_members'
+                )
+                .select(`
+                  conversation_id,
+                  last_read_at
+                `)
+                .eq(
+                  'user_id',
+                  userId
+                )
+                .is(
+                  'left_at',
+                  null
+                );
+
+            membershipData =
+              retryResult.data;
+
+            membershipError =
+              retryResult.error;
+          }
+
+          if (
+            membershipError
           ) {
             console.error(
-              'BADGE READS ERROR:',
-              readError
+              'BADGE MEMBERSHIPS ERROR:',
+              membershipError
             );
 
             return;
           }
 
-          const reads =
+          const memberships =
             (
-              readData ??
+              membershipData ??
               []
-            ) as ReadRow[];
+            ) as MembershipRow[];
+
+          if (
+            memberships.length ===
+            0
+          ) {
+            setUnreadCount(0);
+            return;
+          }
+
+          const conversationIds =
+            memberships.map(
+              (membership) =>
+                membership.conversation_id
+            );
 
           /*
-           * Берём входящие messages.
-           * Собственные сообщения unread не считаем.
+           * Считаем только входящие сообщения.
            */
 
           const {
@@ -331,6 +293,10 @@ export default function TabLayout() {
               .neq(
                 'sender_id',
                 userId
+              )
+              .is(
+                'deleted_for_everyone_at',
+                null
               );
 
           if (
@@ -357,23 +323,26 @@ export default function TabLayout() {
             (
               message
             ) => {
-              const readState =
-                reads.find(
+              const membership =
+                memberships.find(
                   (
-                    read
+                    item
                   ) =>
-                    read.conversation_id ===
+                    item.conversation_id ===
                     message.conversation_id
                 );
 
-              /*
-               * Если пользователь ещё никогда
-               * не открывал этот DM —
-               * входящее сообщение unread.
-               */
-
               if (
-                !readState
+                !membership
+              ) {
+                return;
+              }
+
+              /*
+               * null = пользователь ещё не читал conversation.
+               */
+              if (
+                !membership.last_read_at
               ) {
                 nextUnreadCount +=
                   1;
@@ -388,7 +357,7 @@ export default function TabLayout() {
 
               const lastReadTime =
                 new Date(
-                  readState.last_read_at
+                  membership.last_read_at
                 ).getTime();
 
               if (
@@ -568,7 +537,9 @@ export default function TabLayout() {
             schema:
               'public',
             table:
-              'conversation_reads',
+              'conversation_members',
+            filter:
+              `user_id=eq.${currentUserId}`,
           },
           () => {
             loadUnreadCount();
