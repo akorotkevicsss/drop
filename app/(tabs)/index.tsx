@@ -5,6 +5,7 @@ import {
 
 import {
   useCallback,
+  useEffect,
   useState,
 } from 'react';
 
@@ -21,7 +22,6 @@ import {
   View,
 } from 'react-native';
 
-import { DropCommentsPreview } from '@/components/drop-comments-preview';
 import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -74,6 +74,7 @@ type JoinStatus =
 
 type MyJoinRequest = {
   drop_id: string;
+  reconfirmation_required: boolean | null;
   status:
     | 'pending'
     | 'accepted'
@@ -183,6 +184,11 @@ export default function HomeScreen() {
   ] = useState<string | null>(null);
 
   const [
+    activityUnreadCount,
+    setActivityUnreadCount,
+  ] = useState(0);
+
+  const [
     joinStatuses,
     setJoinStatuses,
   ] = useState<
@@ -208,6 +214,20 @@ export default function HomeScreen() {
     setLikeCounts,
   ] = useState<
     Record<string, number>
+  >({});
+
+  const [
+    commentCounts,
+    setCommentCounts,
+  ] = useState<
+    Record<string, number>
+  >({});
+
+  const [
+    reconfirmationRequired,
+    setReconfirmationRequired,
+  ] = useState<
+    Record<string, boolean>
   >({});
 
   const [
@@ -248,6 +268,60 @@ export default function HomeScreen() {
     null
   );
 
+  const loadActivityUnreadCount =
+    useCallback(
+      async (
+        suppliedUserId?: string
+      ) => {
+        const userId =
+          suppliedUserId ??
+          currentUserId;
+
+        if (!userId) {
+          setActivityUnreadCount(
+            0
+          );
+          return;
+        }
+
+        const {
+          count,
+          error,
+        } =
+          await supabase
+            .from(
+              'notifications'
+            )
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'user_id',
+              userId
+            )
+            .is(
+              'read_at',
+              null
+            );
+
+        if (error) {
+          console.warn(
+            'ACTIVITY BADGE ERROR:',
+            error
+          );
+          return;
+        }
+
+        setActivityUnreadCount(
+          count ?? 0
+        );
+      },
+      [
+        currentUserId,
+      ]
+    );
+
   const loadDrops = async (
     manualRefresh = false
   ) => {
@@ -277,6 +351,10 @@ export default function HomeScreen() {
       }
 
       setCurrentUserId(
+        user.id
+      );
+
+      await loadActivityUnreadCount(
         user.id
       );
 
@@ -449,6 +527,42 @@ export default function HomeScreen() {
       }
 
       const {
+        data: allComments,
+        error: allCommentsError,
+      } =
+        await supabase
+          .from('drop_comments')
+          .select('drop_id')
+          .is('deleted_at', null);
+
+      if (!allCommentsError) {
+        const nextCommentCounts:
+          Record<string, number> = {};
+
+        (allComments ?? []).forEach(
+          (comment) => {
+            nextCommentCounts[
+              comment.drop_id
+            ] =
+              (
+                nextCommentCounts[
+                  comment.drop_id
+                ] ?? 0
+              ) + 1;
+          }
+        );
+
+        setCommentCounts(
+          nextCommentCounts
+        );
+      } else {
+        console.error(
+          'LOAD COMMENT COUNTS ERROR:',
+          allCommentsError
+        );
+      }
+
+      const {
         data: myRequests,
         error: myRequestsError,
       } =
@@ -457,7 +571,7 @@ export default function HomeScreen() {
             'join_requests'
           )
           .select(
-            'drop_id, status'
+            'drop_id, status, reconfirmation_required'
           )
           .eq(
             'user_id',
@@ -488,6 +602,29 @@ export default function HomeScreen() {
         setJoinStatuses(
           nextStatuses
         );
+
+        const nextReconfirmation:
+          Record<string, boolean> = {};
+
+        (
+          (
+            myRequests ??
+            []
+          ) as MyJoinRequest[]
+        ).forEach(
+          (request) => {
+            nextReconfirmation[
+              request.drop_id
+            ] =
+              request.reconfirmation_required ===
+              true;
+          }
+        );
+
+        setReconfirmationRequired(
+          nextReconfirmation
+        );
+
       } else {
         console.error(
           'MY JOIN REQUESTS ERROR:',
@@ -592,6 +729,45 @@ export default function HomeScreen() {
       []
     )
   );
+
+  useEffect(() => {
+    if (
+      !currentUserId
+    ) {
+      return;
+    }
+
+    const channel =
+      supabase
+        .channel(
+          `home-activity-badge-${currentUserId}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema:
+              'public',
+            table:
+              'notifications',
+            filter:
+              `user_id=eq.${currentUserId}`,
+          },
+          () => {
+            loadActivityUnreadCount();
+          }
+        )
+        .subscribe();
+
+    return () => {
+      supabase.removeChannel(
+        channel
+      );
+    };
+  }, [
+    currentUserId,
+    loadActivityUnreadCount,
+  ]);
 
   const handleLike =
     async (
@@ -759,21 +935,15 @@ export default function HomeScreen() {
           'pending'
         ) {
           const {
-            error,
-          } =
-            await supabase
-              .from(
-                'join_requests'
-              )
-              .delete()
-              .eq(
-                'drop_id',
-                drop.id
-              )
-              .eq(
-                'user_id',
-                currentUserId
-              );
+                    error,
+                  } =
+                    await supabase.rpc(
+                      'decline_drop_reschedule',
+                      {
+                        p_drop_id:
+                          drop.id,
+                      }
+                    );
 
           if (error) {
             Alert.alert(
@@ -800,6 +970,98 @@ export default function HomeScreen() {
           currentStatus ===
           'accepted'
         ) {
+          if (
+            !reconfirmationRequired[
+              drop.id
+            ]
+          ) {
+            return;
+          }
+
+          Alert.alert(
+            'Date changed',
+            'The organizer changed the date. Can you still go?',
+            [
+              {
+                text: "Can't go",
+                style: 'destructive',
+                onPress: async () => {
+                  const {
+                    error,
+                  } =
+                    await supabase
+                      .from(
+                        'join_requests'
+                      )
+                      .delete()
+                      .eq(
+                        'drop_id',
+                        drop.id
+                      )
+                      .eq(
+                        'user_id',
+                        currentUserId
+                      );
+
+                  if (error) {
+                    Alert.alert(
+                      'Error',
+                      'Could not update your participation.'
+                    );
+                    return;
+                  }
+
+                  setJoinStatuses(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        'none',
+                    })
+                  );
+
+                  setReconfirmationRequired(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        false,
+                    })
+                  );
+                },
+              },
+              {
+                text: 'Confirm',
+                onPress: async () => {
+                  const {
+                    error,
+                  } =
+                    await supabase.rpc(
+                      'confirm_drop_reschedule',
+                      {
+                        p_drop_id:
+                          drop.id,
+                      }
+                    );
+
+                  if (error) {
+                    Alert.alert(
+                      'Error',
+                      'Could not confirm your participation.'
+                    );
+                    return;
+                  }
+
+                  setReconfirmationRequired(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        false,
+                    })
+                  );
+                },
+              },
+            ]
+          );
+
           return;
         }
 
@@ -1252,6 +1514,25 @@ export default function HomeScreen() {
               DropColors.warmWhite
             }
           />
+          {activityUnreadCount >
+            0 && (
+            <View
+              style={
+                styles.activityBadge
+              }
+            >
+              <Text
+                style={
+                  styles.activityBadgeText
+                }
+              >
+                {activityUnreadCount >
+                99
+                  ? '99+'
+                  : activityUnreadCount}
+              </Text>
+            </View>
+          )}
         </Pressable>
       </View>
 
@@ -1380,6 +1661,12 @@ export default function HomeScreen() {
                   drop.id
                 ] ?? 'none';
 
+              const needsReconfirmation =
+                reconfirmationRequired[
+                  drop.id
+                ] === true;
+
+
               const pendingCount =
                 pendingCounts[
                   drop.id
@@ -1393,6 +1680,15 @@ export default function HomeScreen() {
               const likeCount =
                 likeCounts[
                   drop.id
+                ] ?? 0;
+
+
+              const commentCount =
+
+                commentCounts[
+
+                  drop.id
+
                 ] ?? 0;
 
               const joinOpen =
@@ -1595,7 +1891,8 @@ export default function HomeScreen() {
                             joinLoadingId ===
                               drop.id ||
                             joinStatus ===
-                              'accepted'
+                              'accepted' &&
+                            !needsReconfirmation
                           }
                           activeOpacity={0.72}
                           onPress={() =>
@@ -1621,7 +1918,9 @@ export default function HomeScreen() {
                                 ? 'Requested'
                                 : joinStatus ===
                                     'accepted'
-                                  ? 'Joined'
+                                  ? needsReconfirmation
+                                    ? 'Confirm'
+                                    : 'Joined'
                                   : joinStatus ===
                                       'declined'
                                     ? 'Join again'
@@ -1676,6 +1975,23 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                       )}
 
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: '/drop/[id]/comments',
+                            params: { id: drop.id },
+                          } as any)
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.secondaryAction
+                          }
+                        >
+                          {'Comments ' + commentCount}
+                        </Text>
+                      </TouchableOpacity>
+
                       {drop.reply_enabled && (
                         <TouchableOpacity
                           disabled={
@@ -1702,11 +2018,6 @@ export default function HomeScreen() {
                       )}
                     </View>
                   )}
-
-                  <DropCommentsPreview
-                    dropId={drop.id}
-                    enabled={drop.comments_enabled}
-                  />
 
                   {isOwnDrop && (
                     <>
@@ -1741,6 +2052,24 @@ export default function HomeScreen() {
                             {likeCount}
                           </Text>
                         </View>
+
+                        <Pressable
+                          onPress={() =>
+                            router.push({
+                              pathname: '/drop/[id]/comments',
+                              params: { id: drop.id },
+                            } as any)
+                          }
+                          hitSlop={10}
+                        >
+                          <Text
+                            style={
+                              styles.ownCommentText
+                            }
+                          >
+                            {'Comments ' + commentCount}
+                          </Text>
+                        </Pressable>
 
                         <Pressable
                           onPress={() =>
@@ -1894,6 +2223,32 @@ const styles =
         'center',
       justifyContent:
         'center',
+    },
+
+    activityBadge: {
+      position: 'absolute',
+      top: -3,
+      right: -5,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      paddingHorizontal: 4,
+      backgroundColor:
+        DropColors.wine,
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+    },
+
+    activityBadgeText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.semibold,
+      fontSize: 9,
+      lineHeight: 11,
+      textAlign: 'center',
     },
 
     iconButtonPressed: {
@@ -2167,6 +2522,17 @@ const styles =
     deleteDropButton: {
       marginLeft: 'auto',
     },
+
+    ownCommentText: {
+
+      color: DropColors.textSecondary,
+
+      fontFamily: DropTypography.regular,
+
+      fontSize: 11,
+
+    },
+
 
     deleteDropText: {
       color:

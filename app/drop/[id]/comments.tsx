@@ -1,18 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import {
-    router,
-    Stack,
-    useFocusEffect,
-    useLocalSearchParams,
-} from 'expo-router';
-import {
-    useCallback,
-    useMemo,
-    useState,
-} from 'react';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    ImageBackground,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -23,75 +14,91 @@ import {
     View,
 } from 'react-native';
 
+import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type CommentProfile = {
+type DropAuthor = {
+  username: string | null;
+  display_name: string | null;
+  city: string | null;
+  avatar_url: string | null;
+};
+
+type DropRow = {
+  id: string;
+  author_id: string;
+  text: string;
+  city: string | null;
+  event_time: string | null;
+  event_end_time: string | null;
+  status: 'active' | 'ended' | 'cancelled';
+  comments_enabled: boolean;
+  background_color: string | null;
+  image_path: string | null;
+  attached_image_path: string | null;
+  location_text: string | null;
+  join_limit: number | null;
+  age_restriction: string | null;
+  created_at: string;
+  profiles: DropAuthor | null;
+};
+
+type CommentRow = {
+  id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+};
+
+type Profile = {
   id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
 };
 
-type CommentRow = {
-  id: string;
-  drop_id: string;
-  user_id: string;
-  parent_comment_id: string | null;
-  text: string;
-  created_at: string;
-  profiles: CommentProfile | null;
+type CommentView = CommentRow & {
+  profile: Profile | null;
 };
 
-type DropRow = {
-  id: string;
-  author_id: string;
-  comments_enabled: boolean;
-  status: 'active' | 'ended' | 'cancelled';
-  event_end_time: string | null;
-  text: string;
-};
+function formatDropTime(createdAt: string) {
+  const difference = Date.now() - new Date(createdAt).getTime();
+  const minutes = Math.max(0, Math.floor(difference / 60000));
 
-function formatCommentTime(value: string) {
-  const time = new Date(value).getTime();
-  const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000));
-
-  if (minutes < 1) {
-    return 'now';
-  }
-
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
 
   const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
 
-  if (hours < 24) {
-    return `${hours}h`;
-  }
+  return `${Math.floor(hours / 24)}d`;
+}
 
-  const days = Math.floor(hours / 24);
+function formatCommentTime(createdAt: string) {
+  const date = new Date(createdAt);
 
-  return `${days}d`;
+  return date.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export default function DropCommentsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const dropId = String(id ?? '');
 
   const [drop, setDrop] = useState<DropRow | null>(null);
-  const [comments, setComments] = useState<CommentRow[]>([]);
+  const [comments, setComments] = useState<CommentView[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [replyTo, setReplyTo] = useState<CommentRow | null>(null);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  const loadComments = useCallback(async () => {
-    if (!dropId) {
-      return;
-    }
+  const load = useCallback(async () => {
+    if (!id) return;
 
     try {
       setLoading(true);
@@ -107,396 +114,321 @@ export default function DropCommentsScreen() {
         .select(`
           id,
           author_id,
-          comments_enabled,
-          status,
+          text,
+          city,
+          event_time,
           event_end_time,
-          text
+          status,
+          comments_enabled,
+          background_color,
+          image_path,
+          attached_image_path,
+          location_text,
+          join_limit,
+          age_restriction,
+          created_at,
+          profiles!drops_author_id_fkey (
+            username,
+            display_name,
+            city,
+            avatar_url
+          )
         `)
-        .eq('id', dropId)
+        .eq('id', id)
         .is('deleted_at', null)
-        .single();
+        .maybeSingle();
 
-      if (dropError) {
-        Alert.alert('Comments', 'Could not load this Drop.');
+      if (dropError || !dropData) {
+        setDrop(null);
         return;
       }
 
-      const loadedDrop = dropData as DropRow;
-      setDrop(loadedDrop);
+      setDrop(dropData as unknown as DropRow);
 
-      if (!loadedDrop.comments_enabled) {
+      const { data: commentData, error: commentsError } = await supabase
+        .from('drop_comments')
+        .select('id,user_id,text,created_at')
+        .eq('drop_id', id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true });
+
+      if (commentsError) {
+        throw commentsError;
+      }
+
+      const rows = (commentData ?? []) as CommentRow[];
+      const userIds = [...new Set(rows.map((comment) => comment.user_id))];
+
+      if (!userIds.length) {
         setComments([]);
         return;
       }
 
-      const { data: commentData, error: commentsError } = await supabase
-        .from('drop_comments')
-        .select(`
-          id,
-          drop_id,
-          user_id,
-          parent_comment_id,
-          text,
-          created_at,
-          profiles!drop_comments_user_id_fkey (
-            id,
-            username,
-            display_name,
-            avatar_url
-          )
-        `)
-        .eq('drop_id', dropId)
-        .order('created_at', {
-          ascending: true,
-        });
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id,username,display_name,avatar_url')
+        .in('id', userIds);
 
-      if (commentsError) {
-        console.warn('LOAD COMMENTS ERROR:', commentsError);
-        Alert.alert('Comments', 'Could not load comments.');
-        return;
+      if (profileError) {
+        throw profileError;
       }
 
-      setComments((commentData ?? []) as unknown as CommentRow[]);
+      const profiles = (profileData ?? []) as Profile[];
+
+      setComments(
+        rows.map((comment) => ({
+          ...comment,
+          profile:
+            profiles.find((profile) => profile.id === comment.user_id) ?? null,
+        }))
+      );
+    } catch (error) {
+      console.error('DROP COMMENTS LOAD ERROR:', error);
+      Alert.alert('Error', 'Could not load comments.');
     } finally {
       setLoading(false);
     }
-  }, [dropId]);
+  }, [id]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadComments();
-    }, [loadComments])
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const canComment = useMemo(
+    () =>
+      !!currentUserId &&
+      !!drop?.comments_enabled &&
+      drop.status === 'active',
+    [currentUserId, drop]
   );
-
-  const ended = useMemo(() => {
-    if (!drop) {
-      return false;
-    }
-
-    if (drop.status !== 'active') {
-      return true;
-    }
-
-    if (!drop.event_end_time) {
-      return false;
-    }
-
-    return new Date(drop.event_end_time).getTime() < Date.now();
-  }, [drop]);
-
-  const rootComments = useMemo(
-    () => comments.filter((comment) => !comment.parent_comment_id),
-    [comments]
-  );
-
-  const repliesFor = useCallback(
-    (commentId: string) =>
-      comments.filter(
-        (comment) => comment.parent_comment_id === commentId
-      ),
-    [comments]
-  );
-
-  const canCompose =
-    !!drop &&
-    drop.comments_enabled &&
-    !ended &&
-    !!currentUserId;
 
   const sendComment = async () => {
-    const trimmed = text.trim();
+    const value = text.trim();
 
-    if (!trimmed || !canCompose || sending || !currentUserId) {
+    if (!id || !currentUserId || !canComment || !value || sending) {
       return;
     }
 
     try {
       setSending(true);
 
-      const { error } = await supabase
-        .from('drop_comments')
-        .insert({
-          drop_id: dropId,
-          user_id: currentUserId,
-          parent_comment_id: replyTo?.id ?? null,
-          text: trimmed,
-        });
+      const { error } = await supabase.from('drop_comments').insert({
+        drop_id: id,
+        user_id: currentUserId,
+        text: value,
+      });
 
       if (error) {
-        console.warn('SEND COMMENT ERROR:', error);
-        Alert.alert('Comment', error.message || 'Could not post comment.');
-        return;
+        throw error;
       }
 
       setText('');
-      setReplyTo(null);
-      await loadComments();
+      await load();
+    } catch (error) {
+      console.error('SEND DROP COMMENT ERROR:', error);
+      Alert.alert('Error', 'Could not post comment.');
     } finally {
       setSending(false);
     }
   };
 
-  const deleteComment = (comment: CommentRow) => {
-    const canDelete =
-      comment.user_id === currentUserId ||
-      drop?.author_id === currentUserId;
-
-    if (!canDelete) {
-      return;
-    }
-
-    Alert.alert(
-      'Delete comment?',
-      comment.parent_comment_id
-        ? 'This reply will be removed.'
-        : 'This comment and its replies will be removed.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase
-              .from('drop_comments')
-              .delete()
-              .eq('id', comment.id);
-
-            if (error) {
-              Alert.alert('Comment', 'Could not delete this comment.');
-              return;
-            }
-
-            if (replyTo?.id === comment.id) {
-              setReplyTo(null);
-            }
-
-            await loadComments();
-          },
-        },
-      ]
-    );
-  };
-
-  const openProfile = (comment: CommentRow) => {
-    const username = comment.profiles?.username;
-
-    if (!username) {
-      return;
-    }
-
-    router.push(`/user/${username}` as any);
-  };
-
-  const renderComment = (
-    comment: CommentRow,
-    isReply = false
-  ) => {
-    const profile = comment.profiles;
-    const name =
-      profile?.display_name ||
-      profile?.username ||
-      'User';
-    const canDelete =
-      comment.user_id === currentUserId ||
-      drop?.author_id === currentUserId;
-
+  if (loading) {
     return (
-      <View
-        key={comment.id}
-        style={[
-          styles.commentRow,
-          isReply && styles.replyRow,
-        ]}
-      >
-        <Pressable
-          onPress={() => openProfile(comment)}
-          hitSlop={6}
-        >
-          <UserAvatar
-            uri={profile?.avatar_url ?? null}
-            name={name}
-            size={isReply ? 30 : 36}
-          />
-        </Pressable>
-
-        <View style={styles.commentBody}>
-          <View style={styles.commentTopRow}>
-            <Pressable onPress={() => openProfile(comment)}>
-              <Text style={styles.commentAuthor}>
-                {profile?.username
-                  ? `@${profile.username}`
-                  : name}
-              </Text>
-            </Pressable>
-
-            <Text style={styles.commentTime}>
-              {formatCommentTime(comment.created_at)}
-            </Text>
-          </View>
-
-          <Text style={styles.commentText}>
-            {comment.text}
-          </Text>
-
-          <View style={styles.commentActions}>
-            {!isReply && canCompose && (
-              <Pressable
-                hitSlop={8}
-                onPress={() => setReplyTo(comment)}
-              >
-                <Text style={styles.commentActionText}>Reply</Text>
-              </Pressable>
-            )}
-
-            {canDelete && (
-              <Pressable
-                hitSlop={8}
-                onPress={() => deleteComment(comment)}
-              >
-                <Text style={styles.deleteText}>Delete</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
+      <View style={styles.center}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator color={DropColors.warmWhite} />
       </View>
     );
-  };
+  }
+
+  if (!drop) {
+    return (
+      <View style={styles.center}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Text style={styles.emptyTitle}>Drop unavailable.</Text>
+      </View>
+    );
+  }
+
+  const displayName = drop.profiles?.display_name || 'Unnamed user';
+  const username = drop.profiles?.username;
+  const location =
+    drop.location_text || drop.city || drop.profiles?.city || null;
+
+  const imageUrl = drop.image_path
+    ? supabase.storage.from('drop-images').getPublicUrl(drop.image_path).data
+        .publicUrl
+    : null;
+
+  const attachedImageUrl = drop.attached_image_path
+    ? supabase.storage
+        .from('drop-images')
+        .getPublicUrl(drop.attached_image_path).data.publicUrl
+    : null;
+
+  const hasBackground = !!drop.background_color || !!imageUrl;
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-          hitSlop={8}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={DropColors.warmWhite}
-          />
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Text style={styles.back}>‹</Text>
         </Pressable>
 
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>Comments</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {comments.length > 0
-              ? `${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}`
-              : 'Public discussion'}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Comments</Text>
+
+        <View style={styles.headerSpacer} />
       </View>
 
-      {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={DropColors.warmWhite} />
-        </View>
-      ) : !drop?.comments_enabled ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Comments are off.</Text>
-          <Text style={styles.emptySubtitle}>
-            The organizer disabled comments for this Drop.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {rootComments.length === 0 ? (
-            <View style={styles.emptyInline}>
-              <Text style={styles.emptyTitle}>No comments yet.</Text>
-              <Text style={styles.emptySubtitle}>
-                Be the first to start the discussion.
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.dropCard}>
+          <View style={styles.userRow}>
+            <UserAvatar
+              uri={drop.profiles?.avatar_url}
+              name={displayName}
+              size={40}
+            />
+
+            <View style={styles.authorText}>
+              <Text style={styles.name}>{displayName}</Text>
+              <Text style={styles.username}>
+                {username ? `@${username}` : ''}
+                {username ? ' · ' : ''}
+                {formatDropTime(drop.created_at)}
               </Text>
             </View>
-          ) : (
-            rootComments.map((comment) => (
-              <View key={comment.id} style={styles.thread}>
-                {renderComment(comment)}
+          </View>
 
-                {repliesFor(comment.id).map((reply) =>
-                  renderComment(reply, true)
-                )}
-              </View>
-            ))
-          )}
-        </ScrollView>
-      )}
-
-      {drop?.comments_enabled && (
-        <View style={styles.composerWrap}>
-          {ended ? (
-            <Text style={styles.endedText}>
-              This Drop has ended. Comments are read-only.
-            </Text>
-          ) : replyTo ? (
-            <View style={styles.replyBanner}>
-              <Text style={styles.replyBannerText} numberOfLines={1}>
-                Replying to{' '}
-                {replyTo.profiles?.username
-                  ? `@${replyTo.profiles.username}`
-                  : replyTo.profiles?.display_name || 'User'}
-              </Text>
-
-              <Pressable
-                hitSlop={8}
-                onPress={() => setReplyTo(null)}
+          {hasBackground ? (
+            imageUrl ? (
+              <ImageBackground
+                source={{ uri: imageUrl }}
+                style={styles.dropVisual}
+                imageStyle={styles.dropVisualImage}
               >
-                <Ionicons
-                  name="close"
-                  size={18}
-                  color={DropColors.textMuted}
-                />
-              </Pressable>
-            </View>
-          ) : null}
-
-          {!ended && (
-            <View style={styles.composer}>
-              <TextInput
-                value={text}
-                onChangeText={setText}
-                placeholder={replyTo ? 'Write a reply…' : 'Add a comment…'}
-                placeholderTextColor={DropColors.textMuted}
-                style={styles.input}
-                multiline
-                maxLength={500}
-              />
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.sendButton,
-                  (!text.trim() || sending) && styles.sendButtonDisabled,
-                  pressed && styles.pressed,
+                <View style={styles.dropVisualOverlay}>
+                  <Text style={styles.dropVisualText}>{drop.text}</Text>
+                </View>
+              </ImageBackground>
+            ) : (
+              <View
+                style={[
+                  styles.dropVisual,
+                  {
+                    backgroundColor:
+                      drop.background_color ?? DropColors.surface,
+                  },
                 ]}
-                disabled={!text.trim() || sending}
-                onPress={sendComment}
               >
-                <Ionicons
-                  name="arrow-up"
-                  size={18}
-                  color={DropColors.warmWhite}
-                />
-              </Pressable>
-            </View>
+                <Text style={styles.dropVisualText}>{drop.text}</Text>
+              </View>
+            )
+          ) : (
+            <Text style={styles.dropText}>{drop.text}</Text>
           )}
+
+          {!!attachedImageUrl && (
+            <ImageBackground
+              source={{ uri: attachedImageUrl }}
+              style={styles.attachedImage}
+              imageStyle={styles.attachedImageRadius}
+            />
+          )}
+
+          <DropFeedMeta
+            eventTime={drop.event_time}
+            eventEndTime={drop.event_end_time}
+            status={drop.status}
+            location={location}
+            ageRestriction={drop.age_restriction}
+            joinLimit={drop.join_limit}
+          />
         </View>
-      )}
+
+        <Text style={styles.sectionLabel}>
+          COMMENTS · {comments.length}
+        </Text>
+
+        {comments.length === 0 ? (
+          <View style={styles.emptyComments}>
+            <Text style={styles.emptyTitle}>No comments yet.</Text>
+            <Text style={styles.emptySubtitle}>
+              Be the first to start the discussion.
+            </Text>
+          </View>
+        ) : (
+          comments.map((comment) => {
+            const commentName =
+              comment.profile?.display_name ||
+              comment.profile?.username ||
+              'User';
+
+            return (
+              <View key={comment.id} style={styles.commentRow}>
+                <UserAvatar
+                  uri={comment.profile?.avatar_url}
+                  name={commentName}
+                  size={34}
+                />
+
+                <View style={styles.commentBody}>
+                  <View style={styles.commentHeader}>
+                    <Text style={styles.commentName}>{commentName}</Text>
+                    <Text style={styles.commentTime}>
+                      {formatCommentTime(comment.created_at)}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.commentText}>{comment.text}</Text>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <View style={styles.composer}>
+        {canComment ? (
+          <>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder="Add a comment..."
+              placeholderTextColor={DropColors.textMuted}
+              selectionColor={DropColors.wine}
+              style={styles.input}
+              multiline
+              maxLength={500}
+            />
+
+            <Pressable
+              onPress={sendComment}
+              disabled={!text.trim() || sending}
+              style={[
+                styles.sendButton,
+                (!text.trim() || sending) && styles.sendButtonDisabled,
+              ]}
+            >
+              <Text style={styles.sendText}>{sending ? '...' : 'Post'}</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Text style={styles.commentsClosed}>
+            {drop.comments_enabled
+              ? 'Comments are closed for this Drop.'
+              : 'Comments are disabled by the organizer.'}
+          </Text>
+        )}
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -506,229 +438,208 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: DropColors.graphite,
   },
-
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DropColors.graphite,
+  },
   header: {
+    paddingTop: 52,
     minHeight: 104,
-    paddingTop: 48,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 18,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DropColors.border,
   },
-
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 4,
-  },
-
-  headerCopy: {
-    flex: 1,
-  },
-
-  title: {
+  back: {
+    width: 38,
     color: DropColors.warmWhite,
     fontFamily: DropTypography.light,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 36,
+    lineHeight: 38,
   },
-
-  subtitle: {
-    color: DropColors.textMuted,
-    fontFamily: DropTypography.regular,
-    fontSize: 11,
-    marginTop: 1,
-  },
-
-  loading: {
+  headerTitle: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    textAlign: 'center',
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 16,
   },
-
-  list: {
-    flex: 1,
+  headerSpacer: {
+    width: 38,
   },
-
-  listContent: {
-    paddingHorizontal: 18,
-    paddingTop: 8,
+  content: {
     paddingBottom: 24,
   },
-
-  thread: {
-    paddingVertical: 8,
+  dropCard: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DropColors.border,
   },
-
-  commentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 8,
-  },
-
-  replyRow: {
-    marginLeft: 44,
-  },
-
-  commentBody: {
-    flex: 1,
-  },
-
-  commentTopRow: {
+  userRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 12,
   },
-
-  commentAuthor: {
+  authorText: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  name: {
     color: DropColors.warmWhite,
     fontFamily: DropTypography.medium,
-    fontSize: 12,
+    fontSize: 13,
   },
-
-  commentTime: {
+  username: {
+    marginTop: 2,
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
     fontSize: 10,
   },
-
-  commentText: {
-    color: DropColors.textSecondary,
+  dropText: {
+    color: DropColors.warmWhite,
     fontFamily: DropTypography.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 3,
+    fontSize: 18,
+    lineHeight: 25,
   },
-
-  commentActions: {
-    minHeight: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginTop: 3,
+  dropVisual: {
+    minHeight: 190,
+    borderRadius: 18,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-
-  commentActionText: {
+  dropVisualImage: {
+    borderRadius: 18,
+  },
+  dropVisualOverlay: {
+    minHeight: 190,
+    justifyContent: 'flex-end',
+    padding: 16,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+  },
+  dropVisualText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 20,
+    lineHeight: 27,
+  },
+  attachedImage: {
+    height: 230,
+    marginTop: 12,
+  },
+  attachedImageRadius: {
+    borderRadius: 18,
+  },
+  sectionLabel: {
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 8,
     color: DropColors.textMuted,
     fontFamily: DropTypography.medium,
-    fontSize: 11,
+    fontSize: 10,
+    letterSpacing: 1.1,
   },
-
-  deleteText: {
-    color: DropColors.wine,
-    fontFamily: DropTypography.medium,
-    fontSize: 11,
+  commentRow: {
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
   },
-
-  empty: {
+  commentBody: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
+    minWidth: 0,
+    marginLeft: 10,
   },
-
-  emptyInline: {
-    minHeight: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-
+  commentName: {
+    flex: 1,
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 12,
+  },
+  commentTime: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 9,
+  },
+  commentText: {
+    marginTop: 4,
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  emptyComments: {
+    paddingHorizontal: 18,
+    paddingVertical: 28,
+  },
   emptyTitle: {
     color: DropColors.warmWhite,
     fontFamily: DropTypography.medium,
-    fontSize: 15,
+    fontSize: 13,
   },
-
   emptySubtitle: {
+    marginTop: 4,
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-    marginTop: 6,
+    fontSize: 10,
+    lineHeight: 15,
   },
-
-  composerWrap: {
+  composer: {
+    minHeight: 66,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: DropColors.border,
     backgroundColor: DropColors.graphite,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 10,
   },
-
-  replyBanner: {
-    minHeight: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 8,
-  },
-
-  replyBannerText: {
-    flex: 1,
-    color: DropColors.textMuted,
-    fontFamily: DropTypography.regular,
-    fontSize: 11,
-  },
-
-  composer: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingLeft: 12,
-    paddingRight: 5,
-    paddingVertical: 5,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DropColors.border,
-    borderRadius: 22,
-    backgroundColor: DropColors.surface,
-  },
-
   input: {
     flex: 1,
-    maxHeight: 112,
-    minHeight: 32,
-    paddingTop: 7,
-    paddingBottom: 6,
+    maxHeight: 110,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 22,
+    backgroundColor: DropColors.surface,
     color: DropColors.warmWhite,
     fontFamily: DropTypography.regular,
     fontSize: 13,
-    textAlignVertical: 'top',
+    textAlignVertical: 'center',
   },
-
   sendButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    minWidth: 54,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DropColors.wine,
   },
-
   sendButtonDisabled: {
-    opacity: 0.35,
+    opacity: 0.38,
   },
-
-  endedText: {
+  sendText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 12,
+  },
+  commentsClosed: {
+    flex: 1,
+    paddingVertical: 8,
+    textAlign: 'center',
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
     fontSize: 11,
-    textAlign: 'center',
-    paddingVertical: 7,
-  },
-
-  pressed: {
-    opacity: 0.66,
   },
 });

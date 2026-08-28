@@ -21,7 +21,6 @@ import {
   View,
 } from 'react-native';
 
-import { DropCommentsPreview } from '@/components/drop-comments-preview';
 import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -73,6 +72,7 @@ type JoinStatus =
 
 type MyJoinRequest = {
   drop_id: string;
+  reconfirmation_required: boolean | null;
   status:
     | 'pending'
     | 'accepted'
@@ -280,6 +280,20 @@ export default function ExploreScreen() {
         number
       >
     >({});
+
+  const [
+    commentCounts,
+    setCommentCounts,
+  ] = useState<
+    Record<string, number>
+  >({});
+
+  const [
+    reconfirmationRequired,
+    setReconfirmationRequired,
+  ] = useState<
+    Record<string, boolean>
+  >({});
 
   const [
     joinLoadingId,
@@ -576,6 +590,42 @@ export default function ExploreScreen() {
         }
 
         const {
+          data: allComments,
+          error: allCommentsError,
+        } =
+          await supabase
+            .from('drop_comments')
+            .select('drop_id')
+            .is('deleted_at', null);
+
+        if (!allCommentsError) {
+          const nextCommentCounts:
+            Record<string, number> = {};
+
+          (allComments ?? []).forEach(
+            (comment) => {
+              nextCommentCounts[
+                comment.drop_id
+              ] =
+                (
+                  nextCommentCounts[
+                    comment.drop_id
+                  ] ?? 0
+                ) + 1;
+            }
+          );
+
+          setCommentCounts(
+            nextCommentCounts
+          );
+        } else {
+          console.error(
+            'LOAD COMMENT COUNTS ERROR:',
+            allCommentsError
+          );
+        }
+
+        const {
           data:
             myRequests,
           error:
@@ -586,7 +636,7 @@ export default function ExploreScreen() {
               'join_requests'
             )
             .select(
-              'drop_id, status'
+              'drop_id, status, reconfirmation_required'
             )
             .eq(
               'user_id',
@@ -627,6 +677,29 @@ export default function ExploreScreen() {
           setJoinStatuses(
             nextStatuses
           );
+
+          const nextReconfirmation:
+            Record<string, boolean> = {};
+
+          (
+            (
+              myRequests ??
+              []
+            ) as MyJoinRequest[]
+          ).forEach(
+            (request) => {
+              nextReconfirmation[
+                request.drop_id
+              ] =
+                request.reconfirmation_required ===
+                true;
+            }
+          );
+
+          setReconfirmationRequired(
+            nextReconfirmation
+          );
+
         }
 
         const ownDropIds =
@@ -923,21 +996,15 @@ export default function ExploreScreen() {
           'pending'
         ) {
           const {
-            error,
-          } =
-            await supabase
-              .from(
-                'join_requests'
-              )
-              .delete()
-              .eq(
-                'drop_id',
-                drop.id
-              )
-              .eq(
-                'user_id',
-                currentUserId
-              );
+                    error,
+                  } =
+                    await supabase.rpc(
+                      'decline_drop_reschedule',
+                      {
+                        p_drop_id:
+                          drop.id,
+                      }
+                    );
 
           if (
             error
@@ -965,6 +1032,98 @@ export default function ExploreScreen() {
           currentStatus ===
           'accepted'
         ) {
+          if (
+            !reconfirmationRequired[
+              drop.id
+            ]
+          ) {
+            return;
+          }
+
+          Alert.alert(
+            'Date changed',
+            'The organizer changed the date. Can you still go?',
+            [
+              {
+                text: "Can't go",
+                style: 'destructive',
+                onPress: async () => {
+                  const {
+                    error,
+                  } =
+                    await supabase
+                      .from(
+                        'join_requests'
+                      )
+                      .delete()
+                      .eq(
+                        'drop_id',
+                        drop.id
+                      )
+                      .eq(
+                        'user_id',
+                        currentUserId
+                      );
+
+                  if (error) {
+                    Alert.alert(
+                      'Error',
+                      'Could not update your participation.'
+                    );
+                    return;
+                  }
+
+                  setJoinStatuses(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        'none',
+                    })
+                  );
+
+                  setReconfirmationRequired(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        false,
+                    })
+                  );
+                },
+              },
+              {
+                text: 'Confirm',
+                onPress: async () => {
+                  const {
+                    error,
+                  } =
+                    await supabase.rpc(
+                      'confirm_drop_reschedule',
+                      {
+                        p_drop_id:
+                          drop.id,
+                      }
+                    );
+
+                  if (error) {
+                    Alert.alert(
+                      'Error',
+                      'Could not confirm your participation.'
+                    );
+                    return;
+                  }
+
+                  setReconfirmationRequired(
+                    (current) => ({
+                      ...current,
+                      [drop.id]:
+                        false,
+                    })
+                  );
+                },
+              },
+            ]
+          );
+
           return;
         }
 
@@ -1610,6 +1769,12 @@ export default function ExploreScreen() {
                   ] ??
                   'none';
 
+                const needsReconfirmation =
+                  reconfirmationRequired[
+                    drop.id
+                  ] === true;
+
+
                 const pendingCount =
                   pendingCounts[
                     drop.id
@@ -1626,6 +1791,15 @@ export default function ExploreScreen() {
                     drop.id
                   ] ??
                   0;
+
+
+                const commentCount =
+
+                  commentCounts[
+
+                    drop.id
+
+                  ] ?? 0;
 
                 const joinOpen =
                   isJoinOpen(
@@ -1816,7 +1990,8 @@ export default function ExploreScreen() {
                               joinLoadingId ===
                                 drop.id ||
                               joinStatus ===
-                                'accepted'
+                                'accepted' &&
+                              !needsReconfirmation
                             }
                             onPress={() =>
                               handleJoin(
@@ -1837,7 +2012,9 @@ export default function ExploreScreen() {
                                   ? 'Requested'
                                   : joinStatus ===
                                       'accepted'
-                                    ? 'Joined'
+                                    ? needsReconfirmation
+                                      ? 'Confirm'
+                                      : 'Joined'
                                     : joinStatus ===
                                         'declined'
                                       ? 'Join again'
@@ -1894,6 +2071,23 @@ export default function ExploreScreen() {
                           </TouchableOpacity>
                         )}
 
+                        <TouchableOpacity
+                          onPress={() =>
+                            router.push({
+                              pathname: '/drop/[id]/comments',
+                              params: { id: drop.id },
+                            } as any)
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.secondaryAction
+                            }
+                          >
+                            {'Comments ' + commentCount}
+                          </Text>
+                        </TouchableOpacity>
+
                         {drop.reply_enabled && (
                           <TouchableOpacity
                             disabled={
@@ -1920,11 +2114,6 @@ export default function ExploreScreen() {
                         )}
                       </View>
                     )}
-
-                    <DropCommentsPreview
-                      dropId={drop.id}
-                      enabled={drop.comments_enabled}
-                    />
 
                     {isOwnDrop && (
                       <>
@@ -1959,6 +2148,24 @@ export default function ExploreScreen() {
                               {likeCount}
                             </Text>
                           </View>
+
+                          <Pressable
+                            onPress={() =>
+                              router.push({
+                                pathname: '/drop/[id]/comments',
+                                params: { id: drop.id },
+                              } as any)
+                            }
+                            hitSlop={10}
+                          >
+                            <Text
+                              style={
+                                styles.ownCommentText
+                              }
+                            >
+                              {'Comments ' + commentCount}
+                            </Text>
+                          </Pressable>
 
                           <Pressable
                             onPress={() =>
@@ -2476,6 +2683,17 @@ const styles =
       marginLeft:
         'auto',
     },
+
+    ownCommentText: {
+
+      color: DropColors.textSecondary,
+
+      fontFamily: DropTypography.regular,
+
+      fontSize: 11,
+
+    },
+
 
     deleteDropText: {
       color:
