@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 
-import { DropCommentsPreview } from '@/components/drop-comments-preview';
 import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
@@ -41,7 +40,6 @@ type Drop = {
   background_color: string | null;
   image_path: string | null;
   attached_image_path: string | null;
-  comments_enabled: boolean;
 };
 
 function formatDropTime(createdAt: string) {
@@ -61,6 +59,10 @@ export default function ProfileScreen() {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [averageEventRate, setAverageEventRate] = useState<number | null>(null);
+  const [eventRatingsCount, setEventRatingsCount] = useState(0);
+  const [dropAverageRatings, setDropAverageRatings] =
+    useState<Record<string, number>>({});
 
   const loadProfile = async () => {
     try {
@@ -113,8 +115,7 @@ export default function ProfileScreen() {
           created_at,
           background_color,
           image_path,
-          attached_image_path,
-          comments_enabled
+          attached_image_path
         `)
         .eq('author_id', user.id)
         .is('deleted_at', null)
@@ -128,6 +129,92 @@ export default function ProfileScreen() {
       setFollowersCount(followers ?? 0);
       setFollowingCount(following ?? 0);
       setMyDrops(dropData ?? []);
+
+      const {
+        data: ratingSummary,
+        error: ratingError,
+      } =
+        await supabase.rpc(
+          'get_profile_event_rating',
+          {
+            p_user_id:
+              user.id,
+          }
+        );
+
+      if (ratingError) {
+        console.error(
+          'PROFILE EVENT RATE ERROR:',
+          ratingError
+        );
+      } else {
+        const summary =
+          ratingSummary?.[0];
+
+        setAverageEventRate(
+          summary?.average_rating === null ||
+          summary?.average_rating === undefined
+            ? null
+            : Number(
+                summary.average_rating
+              )
+        );
+
+        setEventRatingsCount(
+          Number(
+            summary?.ratings_count ?? 0
+          )
+        );
+      }
+
+      const ownDropIds =
+        (dropData ?? []).map(
+          (drop) => drop.id
+        );
+
+      if (ownDropIds.length > 0) {
+        const { data: ratingRows } =
+          await supabase
+            .from('drop_ratings')
+            .select('drop_id,rating')
+            .in('drop_id', ownDropIds);
+
+        const totals:
+          Record<string, number> = {};
+        const counts:
+          Record<string, number> = {};
+
+        (ratingRows ?? []).forEach(
+          (row) => {
+            totals[row.drop_id] =
+              (totals[row.drop_id] ?? 0) +
+              Number(row.rating);
+            counts[row.drop_id] =
+              (counts[row.drop_id] ?? 0) + 1;
+          }
+        );
+
+        const averages:
+          Record<string, number> = {};
+
+        Object.keys(totals).forEach(
+          (dropId) => {
+            averages[dropId] =
+              Math.round(
+                (
+                  totals[dropId] /
+                  counts[dropId]
+                ) * 10
+              ) / 10;
+          }
+        );
+
+        setDropAverageRatings(
+          averages
+        );
+      } else {
+        setDropAverageRatings({});
+      }
     } finally {
       setLoading(false);
     }
@@ -234,6 +321,27 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {averageEventRate !== null && (
+          <View style={styles.eventRateRow}>
+            <View>
+              <Text style={styles.eventRateLabel}>
+                Average event rate
+              </Text>
+
+              <Text style={styles.eventRateMeta}>
+                {eventRatingsCount}{' '}
+                {eventRatingsCount === 1
+                  ? 'rating'
+                  : 'ratings'}
+              </Text>
+            </View>
+
+            <Text style={styles.eventRateValue}>
+              ★ {averageEventRate.toFixed(1)}
+            </Text>
+          </View>
+        )}
+
         <Pressable
           style={styles.lineAction}
           onPress={() => router.push('/edit-profile')}
@@ -334,10 +442,16 @@ export default function ProfileScreen() {
                 />
                 <Text style={styles.dropMeta}>{formatDropTime(drop.created_at)}</Text>
 
-                <DropCommentsPreview
-                  dropId={drop.id}
-                  enabled={drop.comments_enabled}
-                />
+                {drop.status === 'ended' &&
+                  dropAverageRatings[drop.id] !== undefined && (
+                    <View style={styles.cardRateRow}>
+                      <View style={styles.cardRateButton}>
+                        <Text style={styles.cardRateText}>
+                          ★ {dropAverageRatings[drop.id].toFixed(1)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
               </Pressable>
             );
           })
@@ -454,6 +568,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+  eventRateRow: {
+    minHeight: 62,
+    paddingHorizontal: 22,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  eventRateLabel: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 14,
+  },
+  eventRateMeta: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  eventRateValue: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 16,
+  },
   lineAction: {
     minHeight: 56,
     paddingHorizontal: 22,
@@ -541,6 +680,26 @@ const styles = StyleSheet.create({
     fontFamily: DropTypography.regular,
     fontSize: 12,
     marginTop: 7,
+  },
+  cardRateRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+  },
+  cardRateButton: {
+    minHeight: 34,
+    minWidth: 66,
+    paddingHorizontal: 13,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    backgroundColor: DropColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardRateText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 12,
   },
   empty: {
     paddingHorizontal: 22,

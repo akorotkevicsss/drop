@@ -15,8 +15,8 @@ import {
   View,
 } from 'react-native';
 
-import { DropCommentsPreview } from '@/components/drop-comments-preview';
 import { DropFeedMeta } from '@/components/drop-feed-meta';
+import { DropRatingPicker } from '@/components/drop-rating-picker';
 import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -51,7 +51,6 @@ type Drop = {
   background_color: string | null;
   image_path: string | null;
   attached_image_path: string | null;
-  comments_enabled: boolean;
 };
 
 function formatDropTime(createdAt: string) {
@@ -75,6 +74,20 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
+  const [averageEventRate, setAverageEventRate] = useState<number | null>(null);
+  const [eventRatingsCount, setEventRatingsCount] = useState(0);
+  const [dropAverageRatings, setDropAverageRatings] =
+    useState<Record<string, number>>({});
+  const [joinStatuses, setJoinStatuses] =
+    useState<Record<string, 'none' | 'pending' | 'accepted' | 'declined'>>({});
+  const [myRatings, setMyRatings] =
+    useState<Record<string, number>>({});
+  const [ratingDropId, setRatingDropId] =
+    useState<string | null>(null);
+  const [ratingValue, setRatingValue] =
+    useState(5);
+  const [ratingSaving, setRatingSaving] =
+    useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -123,6 +136,43 @@ export default function UserProfileScreen() {
 
       setProfile(loadedProfile);
 
+      const {
+        data: ratingSummary,
+        error: ratingError,
+      } =
+        await supabase.rpc(
+          'get_profile_event_rating',
+          {
+            p_user_id:
+              loadedProfile.id,
+          }
+        );
+
+      if (ratingError) {
+        console.error(
+          'PUBLIC EVENT RATE ERROR:',
+          ratingError
+        );
+      } else {
+        const summary =
+          ratingSummary?.[0];
+
+        setAverageEventRate(
+          summary?.average_rating === null ||
+          summary?.average_rating === undefined
+            ? null
+            : Number(
+                summary.average_rating
+              )
+        );
+
+        setEventRatingsCount(
+          Number(
+            summary?.ratings_count ?? 0
+          )
+        );
+      }
+
       const { data: dropData, error: dropsError } = await supabase
         .from('drops')
         .select(`
@@ -138,8 +188,7 @@ export default function UserProfileScreen() {
           created_at,
           background_color,
           image_path,
-          attached_image_path,
-          comments_enabled
+          attached_image_path
         `)
         .eq('author_id', loadedProfile.id)
         .is('deleted_at', null)
@@ -150,8 +199,145 @@ export default function UserProfileScreen() {
       } else {
         setUserDrops(dropData ?? []);
       }
+
+      const dropIds =
+        (dropData ?? []).map(
+          (drop) => drop.id
+        );
+
+      if (dropIds.length > 0) {
+        const [
+          ratingsResult,
+          joinResult,
+          myRatingsResult,
+        ] = await Promise.all([
+          supabase
+            .from('drop_ratings')
+            .select('drop_id,rating')
+            .in('drop_id', dropIds),
+          supabase
+            .from('join_requests')
+            .select('drop_id,status')
+            .eq('user_id', user.id)
+            .in('drop_id', dropIds),
+          supabase
+            .from('drop_ratings')
+            .select('drop_id,rating')
+            .eq('user_id', user.id)
+            .in('drop_id', dropIds),
+        ]);
+
+        const totals:
+          Record<string, number> = {};
+        const counts:
+          Record<string, number> = {};
+
+        (ratingsResult.data ?? []).forEach(
+          (row) => {
+            totals[row.drop_id] =
+              (totals[row.drop_id] ?? 0) +
+              Number(row.rating);
+            counts[row.drop_id] =
+              (counts[row.drop_id] ?? 0) + 1;
+          }
+        );
+
+        const averages:
+          Record<string, number> = {};
+
+        Object.keys(totals).forEach(
+          (dropId) => {
+            averages[dropId] =
+              Math.round(
+                (
+                  totals[dropId] /
+                  counts[dropId]
+                ) * 10
+              ) / 10;
+          }
+        );
+
+        setDropAverageRatings(averages);
+
+        const nextStatuses:
+          Record<
+            string,
+            'none' | 'pending' | 'accepted' | 'declined'
+          > = {};
+
+        (joinResult.data ?? []).forEach(
+          (row) => {
+            nextStatuses[row.drop_id] =
+              row.status;
+          }
+        );
+
+        setJoinStatuses(nextStatuses);
+
+        const nextRatings:
+          Record<string, number> = {};
+
+        (myRatingsResult.data ?? []).forEach(
+          (row) => {
+            nextRatings[row.drop_id] =
+              Number(row.rating);
+          }
+        );
+
+        setMyRatings(nextRatings);
+      } else {
+        setDropAverageRatings({});
+        setJoinStatuses({});
+        setMyRatings({});
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openRating = (dropId: string) => {
+    setRatingDropId(dropId);
+    setRatingValue(
+      myRatings[dropId] ?? 5
+    );
+  };
+
+  const saveRating = async () => {
+    if (!ratingDropId || ratingSaving) return;
+
+    try {
+      setRatingSaving(true);
+
+      const { error } = await supabase.rpc(
+        'rate_ended_drop',
+        {
+          p_drop_id: ratingDropId,
+          p_rating: ratingValue,
+        }
+      );
+
+      if (error) throw error;
+
+      setMyRatings(
+        (current) => ({
+          ...current,
+          [ratingDropId]: ratingValue,
+        })
+      );
+
+      setRatingDropId(null);
+      await loadProfile();
+    } catch (error) {
+      console.error(
+        'PROFILE RATE DROP ERROR:',
+        error
+      );
+      Alert.alert(
+        'Rate',
+        'Could not save your rate.'
+      );
+    } finally {
+      setRatingSaving(false);
     }
   };
 
@@ -387,6 +573,27 @@ export default function UserProfileScreen() {
           </View>
         </View>
 
+        {averageEventRate !== null && (
+          <View style={styles.eventRateRow}>
+            <View>
+              <Text style={styles.eventRateLabel}>
+                Average event rate
+              </Text>
+
+              <Text style={styles.eventRateMeta}>
+                {eventRatingsCount}{' '}
+                {eventRatingsCount === 1
+                  ? 'rating'
+                  : 'ratings'}
+              </Text>
+            </View>
+
+            <Text style={styles.eventRateValue}>
+              ★ {averageEventRate.toFixed(1)}
+            </Text>
+          </View>
+        )}
+
         {!isOwner && (
           <View style={styles.actions}>
             <Pressable
@@ -459,6 +666,15 @@ export default function UserProfileScreen() {
               drop.location_text ||
               drop.city;
 
+            const joinStatus =
+              joinStatuses[drop.id] ?? 'none';
+
+            const averageRating =
+              dropAverageRatings[drop.id];
+
+            const myRating =
+              myRatings[drop.id];
+
             return (
               <Pressable key={drop.id} style={styles.drop} onPress={() => router.push({ pathname: '/drop/[id]', params: { id: drop.id } } as any)}>
                 {hasBackground ? (
@@ -514,15 +730,52 @@ export default function UserProfileScreen() {
                 />
                 <Text style={styles.dropMeta}>{formatDropTime(drop.created_at)}</Text>
 
-                <DropCommentsPreview
-                  dropId={drop.id}
-                  enabled={drop.comments_enabled}
-                />
+                {drop.status === 'ended' &&
+                  (
+                    joinStatus === 'accepted'
+                      ? true
+                      : averageRating !== undefined
+                  ) && (
+                    <View style={styles.cardRateRow}>
+                      {joinStatus === 'accepted' ? (
+                        <Pressable
+                          style={styles.cardRateButton}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            openRating(drop.id);
+                          }}
+                        >
+                          <Text style={styles.cardRateText}>
+                            {myRating !== undefined
+                              ? `★ ${myRating.toFixed(1)}`
+                              : 'Rate'}
+                          </Text>
+                        </Pressable>
+                      ) : averageRating !== undefined ? (
+                        <View style={styles.cardRateButton}>
+                          <Text style={styles.cardRateText}>
+                            ★ {averageRating.toFixed(1)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  )}
               </Pressable>
             );
           })
         )}
       </ScrollView>
+
+      <DropRatingPicker
+        visible={ratingDropId !== null}
+        value={ratingValue}
+        saving={ratingSaving}
+        onChange={setRatingValue}
+        onClose={() =>
+          setRatingDropId(null)
+        }
+        onSave={saveRating}
+      />
     </View>
   );
 }
@@ -621,6 +874,31 @@ const styles = StyleSheet.create({
     fontFamily: DropTypography.regular,
     fontSize: 12,
     marginTop: 3,
+  },
+  eventRateRow: {
+    minHeight: 62,
+    paddingHorizontal: 22,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  eventRateLabel: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 14,
+  },
+  eventRateMeta: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  eventRateValue: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 16,
   },
   actions: {
     width: '100%',
@@ -721,6 +999,26 @@ const styles = StyleSheet.create({
     fontFamily: DropTypography.regular,
     fontSize: 12,
     marginTop: 7,
+  },
+  cardRateRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+  },
+  cardRateButton: {
+    minHeight: 34,
+    minWidth: 66,
+    paddingHorizontal: 13,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    backgroundColor: DropColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardRateText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 12,
   },
   empty: { paddingHorizontal: 22, paddingTop: 26 },
   muted: {

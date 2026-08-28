@@ -2,16 +2,17 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    ImageBackground,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
+import { DropRatingPicker } from '@/components/drop-rating-picker';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
@@ -34,6 +35,7 @@ type DropRow = {
   join_limit: number | null;
   join_mode: JoinMode;
   reply_enabled: boolean;
+  comments_enabled: boolean;
   age_restriction: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -89,6 +91,12 @@ export default function DropDetailScreen() {
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [myRating, setMyRating] = useState<number | null>(null);
+  const [ratingAverage, setRatingAverage] = useState<number | null>(null);
+  const [ratingsCount, setRatingsCount] = useState(0);
+  const [ratingPickerOpen, setRatingPickerOpen] = useState(false);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingSaving, setRatingSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -102,7 +110,7 @@ export default function DropDetailScreen() {
         .select(`
           id, author_id, text, city, event_time, event_end_time, location_text,
           join_enabled, join_until, join_limit, join_mode, reply_enabled,
-          age_restriction, background_color, image_path,
+          comments_enabled, age_restriction, background_color, image_path,
           attached_image_path, attached_video_path, dress_code, conditions,
           price_text, language_text, hashtags, status, created_at
         `)
@@ -140,6 +148,30 @@ export default function DropDetailScreen() {
       setLikeCount(likes ?? 0);
       setParticipantCount(participants ?? 0);
 
+      const { data: ratingSummary } =
+        await supabase.rpc(
+          'get_drop_rating_summary',
+          { p_drop_id: nextDrop.id }
+        );
+
+      const summary =
+        ratingSummary?.[0];
+
+      setRatingAverage(
+        summary?.average_rating === null ||
+        summary?.average_rating === undefined
+          ? null
+          : Number(
+              summary.average_rating
+            )
+      );
+
+      setRatingsCount(
+        Number(
+          summary?.ratings_count ?? 0
+        )
+      );
+
       if (user && user.id !== nextDrop.author_id) {
         const [{ data: request }, { data: like }] = await Promise.all([
           supabase
@@ -157,6 +189,33 @@ export default function DropDetailScreen() {
         ]);
         setJoinStatus((request?.status as JoinStatus | undefined) ?? 'none');
         setLiked(!!like);
+
+        const {
+          data: ownRating,
+        } =
+          await supabase
+            .from(
+              'drop_ratings'
+            )
+            .select('rating')
+            .eq(
+              'drop_id',
+              nextDrop.id
+            )
+            .eq(
+              'user_id',
+              user.id
+            )
+            .maybeSingle();
+
+        setMyRating(
+          ownRating?.rating ===
+            undefined
+            ? null
+            : Number(
+                ownRating.rating
+              )
+        );
       } else {
         setJoinStatus('none');
         setLiked(false);
@@ -240,6 +299,78 @@ export default function DropDetailScreen() {
       setActionLoading(false);
     }
   };
+
+  const openRating = () => {
+    if (
+      !drop ||
+      joinStatus !== 'accepted' ||
+      drop.status !== 'ended'
+    ) {
+      return;
+    }
+
+    setRatingValue(
+      myRating ?? 5
+    );
+    setRatingPickerOpen(
+      true
+    );
+  };
+
+  const saveRating =
+    async () => {
+      if (
+        !drop ||
+        ratingSaving
+      ) {
+        return;
+      }
+
+      try {
+        setRatingSaving(
+          true
+        );
+
+        const {
+          error,
+        } =
+          await supabase.rpc(
+            'rate_ended_drop',
+            {
+              p_drop_id:
+                drop.id,
+              p_rating:
+                ratingValue,
+            }
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        setMyRating(
+          ratingValue
+        );
+
+        setRatingPickerOpen(
+          false
+        );
+      } catch (error) {
+        console.error(
+          'DROP RATE ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Rate',
+          'Could not save your rate.'
+        );
+      } finally {
+        setRatingSaving(
+          false
+        );
+      }
+    };
 
   const openAuthor = () => {
     if (!author?.username) return;
@@ -334,10 +465,70 @@ export default function DropDetailScreen() {
           <View style={styles.socialMetric}><HeartIcon liked={liked || isOwner} size={20} /><Text style={styles.socialText}>{likeCount}</Text></View>
         </View>
 
-        {isOwner ? (
-          <Pressable style={styles.primaryButton} onPress={() => router.push({ pathname: '/drop/[id]/manage', params: { id: drop.id } } as any)}>
-            <Text style={styles.primaryButtonText}>Manage Drop</Text>
+        {drop.comments_enabled && !ended && (
+          <Pressable style={styles.sectionLink} onPress={() => Alert.alert('Comments', 'Comments UI is the next Drop v2 layer.')}>
+            <View><Text style={styles.sectionLinkTitle}>Comments</Text><Text style={styles.sectionLinkSubtitle}>Questions and public discussion</Text></View>
+            <Text style={styles.chevron}>›</Text>
           </Pressable>
+        )}
+
+        {isOwner ? (
+          <>
+            {drop.status === 'ended' && (
+              <Pressable
+                style={styles.ratesRow}
+                onPress={() =>
+                  router.push({
+                    pathname: '/drop/[id]/rates',
+                    params: {
+                      id: drop.id,
+                    },
+                  } as any)
+                }
+              >
+                <Text style={styles.ratesLabel}>
+                  Rates
+                </Text>
+
+                <Text style={styles.ratesValue}>
+                  {ratingAverage === null
+                    ? 'No rates  →'
+                    : `★ ${ratingAverage.toFixed(1)} · ${ratingsCount}  →`}
+                </Text>
+              </Pressable>
+            )}
+
+            <Pressable style={styles.primaryButton} onPress={() => router.push({ pathname: '/drop/[id]/manage', params: { id: drop.id } } as any)}>
+              <Text style={styles.primaryButtonText}>Manage Drop</Text>
+            </Pressable>
+          </>
+        ) : drop.status === 'ended' &&
+          joinStatus === 'accepted' ? (
+          <Pressable
+            style={[
+              styles.primaryButton,
+              styles.secondaryButton,
+            ]}
+            onPress={openRating}
+          >
+            <Text style={styles.primaryButtonText}>
+              {myRating === null
+                ? 'Rate'
+                : `★ ${myRating.toFixed(1)}`}
+            </Text>
+          </Pressable>
+        ) : drop.status === 'ended' &&
+          ratingAverage !== null ? (
+          <View
+            style={[
+              styles.primaryButton,
+              styles.secondaryButton,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              ★ {ratingAverage.toFixed(1)}
+            </Text>
+          </View>
         ) : !ended ? (
           <View style={styles.bottomActions}>
             {drop.join_enabled && (
@@ -349,12 +540,44 @@ export default function DropDetailScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      <DropRatingPicker
+        visible={ratingPickerOpen}
+        value={ratingValue}
+        saving={ratingSaving}
+        onChange={setRatingValue}
+        onClose={() =>
+          setRatingPickerOpen(false)
+        }
+        onSave={saveRating}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DropColors.graphite },
+  ratesRow: {
+    minHeight: 54,
+    marginBottom: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ratesLabel: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 14,
+  },
+  ratesValue: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontSize: 13,
+  },
   center: { flex: 1, backgroundColor: DropColors.graphite, alignItems: 'center', justifyContent: 'center', gap: 14 },
   header: { paddingTop: 52, minHeight: 96, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerSide: { width: 42 },

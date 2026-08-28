@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { DropFeedMeta } from '@/components/drop-feed-meta';
+import { DropRatingPicker } from '@/components/drop-rating-picker';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -287,6 +288,37 @@ export default function ExploreScreen() {
   ] = useState<
     Record<string, number>
   >({});
+
+  const [
+    myRatings,
+    setMyRatings,
+  ] = useState<
+    Record<string, number>
+  >({});
+
+  const [
+    averageRatings,
+    setAverageRatings,
+  ] = useState<
+    Record<string, number>
+  >({});
+
+  const [
+    ratingDropId,
+    setRatingDropId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    ratingValue,
+    setRatingValue,
+  ] = useState(5);
+
+  const [
+    ratingSaving,
+    setRatingSaving,
+  ] = useState(false);
 
   const [
     reconfirmationRequired,
@@ -702,7 +734,106 @@ export default function ExploreScreen() {
 
         }
 
-        const ownDropIds =
+        const {
+        data: myRatingRows,
+        error: myRatingsError,
+      } =
+        await supabase
+          .from('drop_ratings')
+          .select('drop_id,rating')
+          .eq('user_id', user.id);
+
+      if (myRatingsError) {
+        console.error(
+          'MY RATINGS ERROR:',
+          myRatingsError
+        );
+      } else {
+        const nextRatings:
+          Record<string, number> = {};
+
+        (
+          myRatingRows ?? []
+        ).forEach(
+          (row) => {
+            nextRatings[
+              row.drop_id
+            ] = Number(
+              row.rating
+            );
+          }
+        );
+
+        setMyRatings(
+          nextRatings
+        );
+      }
+
+      const {
+        data: allRatingRows,
+        error: allRatingsError,
+      } =
+        await supabase
+          .from('drop_ratings')
+          .select('drop_id,rating');
+
+      if (allRatingsError) {
+        console.error(
+          'DROP RATING AVERAGES ERROR:',
+          allRatingsError
+        );
+      } else {
+        const totals:
+          Record<string, number> = {};
+        const counts:
+          Record<string, number> = {};
+
+        (
+          allRatingRows ?? []
+        ).forEach(
+          (row) => {
+            totals[row.drop_id] =
+              (
+                totals[
+                  row.drop_id
+                ] ?? 0
+              ) +
+              Number(
+                row.rating
+              );
+
+            counts[row.drop_id] =
+              (
+                counts[
+                  row.drop_id
+                ] ?? 0
+              ) + 1;
+          }
+        );
+
+        const averages:
+          Record<string, number> = {};
+
+        Object.keys(
+          totals
+        ).forEach(
+          (dropId) => {
+            averages[dropId] =
+              Math.round(
+                (
+                  totals[dropId] /
+                  counts[dropId]
+                ) * 10
+              ) / 10;
+          }
+        );
+
+        setAverageRatings(
+          averages
+        );
+      }
+
+      const ownDropIds =
           discoveryDrops
             .filter(
               (
@@ -817,6 +948,78 @@ export default function ExploreScreen() {
       []
     )
   );
+
+  const openRating =
+    (drop: Drop) => {
+      setRatingDropId(
+        drop.id
+      );
+
+      setRatingValue(
+        myRatings[
+          drop.id
+        ] ?? 5
+      );
+    };
+
+  const saveRating =
+    async () => {
+      if (
+        !ratingDropId ||
+        ratingSaving
+      ) {
+        return;
+      }
+
+      try {
+        setRatingSaving(
+          true
+        );
+
+        const {
+          error,
+        } =
+          await supabase.rpc(
+            'rate_ended_drop',
+            {
+              p_drop_id:
+                ratingDropId,
+              p_rating:
+                ratingValue,
+            }
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        setMyRatings(
+          (current) => ({
+            ...current,
+            [ratingDropId]:
+              ratingValue,
+          })
+        );
+
+        setRatingDropId(
+          null
+        );
+      } catch (error) {
+        console.error(
+          'RATE DROP ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Rate',
+          'Could not save your rate.'
+        );
+      } finally {
+        setRatingSaving(
+          false
+        );
+      }
+    };
 
   const handleLike =
     async (
@@ -1806,6 +2009,11 @@ export default function ExploreScreen() {
                     drop
                   );
 
+                const averageRating =
+                  averageRatings[
+                    drop.id
+                  ];
+
                 const joinTimerLabel =
                   formatJoinTimer(
                     drop.join_until
@@ -1969,12 +2177,59 @@ export default function ExploreScreen() {
 
                     </Pressable>
 
-                  {!isOwnDrop && (
+                  {(!isOwnDrop ||
+                    drop.status === 'ended') && (
                       <View
                         style={
                           styles.actions
                         }
                       >
+                        {drop.status === 'ended' ? (
+                          !isOwnDrop &&
+                          joinStatus === 'accepted' ? (
+                            <TouchableOpacity
+                              style={[
+                                styles.joinButton,
+                                styles.acceptedButton,
+                              ]}
+                              onPress={() =>
+                                openRating(
+                                  drop
+                                )
+                              }
+                            >
+                              <Text
+                                style={
+                                  styles.joinText
+                                }
+                              >
+                                {myRatings[
+                                  drop.id
+                                ] !== undefined
+                                  ? `★ ${myRatings[
+                                      drop.id
+                                    ].toFixed(1)}`
+                                  : 'Rate'}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : averageRating !== undefined ? (
+                            <View
+                              style={[
+                                styles.joinButton,
+                                styles.acceptedButton,
+                              ]}
+                            >
+                              <Text
+                                style={
+                                  styles.joinText
+                                }
+                              >
+                                ★ {averageRating.toFixed(1)}
+                              </Text>
+                            </View>
+                          ) : null
+                        ) : null}
+
                         {joinOpen && (
                           <TouchableOpacity
                             style={[
@@ -2292,6 +2547,30 @@ export default function ExploreScreen() {
           />
         </Pressable>
       )}
+      <DropRatingPicker
+        visible={
+          ratingDropId !==
+          null
+        }
+        value={
+          ratingValue
+        }
+        saving={
+          ratingSaving
+        }
+        onChange={
+          setRatingValue
+        }
+        onClose={() =>
+          setRatingDropId(
+            null
+          )
+        }
+        onSave={
+          saveRating
+        }
+      />
+
     </View>
   );
 }
