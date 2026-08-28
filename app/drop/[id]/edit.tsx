@@ -439,8 +439,9 @@ const styles = StyleSheet.create({
   multilinePlaceholder: {
     position: 'absolute',
     right: 0,
-    top: 0,
-    bottom: 0,
+    top: '50%',
+    transform: [{ translateY: -8 }],
+    lineHeight: 16,
     textAlignVertical: 'center',
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,

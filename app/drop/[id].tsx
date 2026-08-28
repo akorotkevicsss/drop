@@ -34,7 +34,6 @@ type DropRow = {
   join_limit: number | null;
   join_mode: JoinMode;
   reply_enabled: boolean;
-  comments_enabled: boolean;
   age_restriction: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -73,7 +72,7 @@ function formatEventDate(value: string | null) {
 function getStatusLabel(drop: DropRow) {
   if (drop.status === 'ended') return 'THIS DROP HAS ENDED';
   if (drop.status === 'cancelled') return 'THIS DROP WAS CANCELLED';
-  if (drop.event_time && new Date(drop.event_time).getTime() < Date.now()) {
+  if (drop.event_end_time && new Date(drop.event_end_time).getTime() < Date.now()) {
     return 'THIS DROP HAS ENDED';
   }
   return null;
@@ -103,7 +102,7 @@ export default function DropDetailScreen() {
         .select(`
           id, author_id, text, city, event_time, event_end_time, location_text,
           join_enabled, join_until, join_limit, join_mode, reply_enabled,
-          comments_enabled, age_restriction, background_color, image_path,
+          age_restriction, background_color, image_path,
           attached_image_path, attached_video_path, dress_code, conditions,
           price_text, language_text, hashtags, status, created_at
         `)
@@ -134,8 +133,7 @@ export default function DropDetailScreen() {
           .from('join_requests')
           .select('*', { count: 'exact', head: true })
           .eq('drop_id', nextDrop.id)
-          .eq('status', 'accepted')
-          .neq('user_id', nextDrop.author_id),
+          .eq('status', 'accepted'),
       ]);
 
       setAuthor((profileData as Profile | null) ?? null);
@@ -181,7 +179,7 @@ export default function DropDetailScreen() {
   }, [drop?.attached_image_path]);
 
   const isOwner = !!drop && currentUserId === drop.author_id;
-  const ended = !!drop && (drop.status !== 'active' || (!!drop.event_time && new Date(drop.event_time).getTime() < Date.now()));
+  const ended = !!drop && (drop.status !== 'active' || (!!drop.event_end_time && new Date(drop.event_end_time).getTime() < Date.now()));
   const statusLabel = drop ? getStatusLabel(drop) : null;
   const eventLabel = drop ? formatEventDate(drop.event_time) : null;
 
@@ -264,18 +262,12 @@ export default function DropDetailScreen() {
 
   const displayName = author?.display_name || author?.username || 'User';
   const detailRows = [
-    drop.age_restriction
-      ? ['Age', `${drop.age_restriction.replace(/\+$/, '')}+`]
-      : null,
-    drop.dress_code ? ['Dress code', drop.dress_code] : null,
+    drop.age_restriction ? ['Age', drop.age_restriction === 'under16' ? 'Under 16' : drop.age_restriction] : null,
+    ['Going', drop.join_limit ? `${participantCount} / ${drop.join_limit}` : `${participantCount}`],
     drop.price_text ? ['Price', drop.price_text] : null,
+    drop.dress_code ? ['Dress code', drop.dress_code] : null,
     drop.language_text ? ['Language', drop.language_text] : null,
     drop.conditions ? ['Conditions', drop.conditions] : null,
-    drop.join_limit
-      ? ['Capacity', `${participantCount}/${drop.join_limit}`]
-      : participantCount > 0
-        ? ['Going', `${participantCount}`]
-        : null,
   ].filter(Boolean) as [string, string][];
 
   return (
@@ -340,15 +332,7 @@ export default function DropDetailScreen() {
 
         <View style={styles.socialRow}>
           <View style={styles.socialMetric}><HeartIcon liked={liked || isOwner} size={20} /><Text style={styles.socialText}>{likeCount}</Text></View>
-          {drop.join_limit ? <Text style={styles.socialText}>{participantCount}/{drop.join_limit} going</Text> : participantCount > 0 ? <Text style={styles.socialText}>{participantCount} going</Text> : null}
         </View>
-
-        {drop.comments_enabled && !ended && (
-          <Pressable style={styles.sectionLink} onPress={() => Alert.alert('Comments', 'Comments UI is the next Drop v2 layer.')}>
-            <View><Text style={styles.sectionLinkTitle}>Comments</Text><Text style={styles.sectionLinkSubtitle}>Questions and public discussion</Text></View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        )}
 
         {isOwner ? (
           <Pressable style={styles.primaryButton} onPress={() => router.push({ pathname: '/drop/[id]/manage', params: { id: drop.id } } as any)}>
@@ -396,9 +380,9 @@ const styles = StyleSheet.create({
   infoCopy: { flex: 1 },
   infoLabel: { color: DropColors.textMuted, fontFamily: DropTypography.medium, fontSize: 9, letterSpacing: 1.1, marginBottom: 3 },
   infoValue: { color: DropColors.warmWhite, fontFamily: DropTypography.regular, fontSize: 14, lineHeight: 19 },
-  detailsSection: { marginTop: 24 },
-  sectionLabel: { paddingHorizontal: 18, color: DropColors.textMuted, fontFamily: DropTypography.medium, fontSize: 10, letterSpacing: 1.2, marginBottom: 8 },
-  detailRow: { minHeight: 46, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border },
+  detailsSection: { marginTop: 24, paddingHorizontal: 18 },
+  sectionLabel: { color: DropColors.textMuted, fontFamily: DropTypography.medium, fontSize: 10, letterSpacing: 1.2, marginBottom: 8 },
+  detailRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border },
   detailLabel: { width: 92, color: DropColors.textSecondary, fontFamily: DropTypography.regular, fontSize: 12 },
   detailValue: { flex: 1, color: DropColors.warmWhite, fontFamily: DropTypography.regular, fontSize: 13, lineHeight: 18 },
   hashtags: { paddingHorizontal: 18, marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

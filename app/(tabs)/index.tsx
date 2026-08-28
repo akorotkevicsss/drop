@@ -21,6 +21,8 @@ import {
   View,
 } from 'react-native';
 
+import { DropCommentsPreview } from '@/components/drop-comments-preview';
+import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -47,10 +49,11 @@ type Drop = {
   city: string | null;
   event_time: string | null;
   event_end_time: string | null;
-  status: string | null;
+  status: 'active' | 'ended' | 'cancelled';
   join_enabled: boolean;
   interested_enabled: boolean;
   reply_enabled: boolean;
+  comments_enabled: boolean;
   join_until: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -83,24 +86,6 @@ type ConversationRow = {
   participant_id: string;
 };
 
-
-function formatEventRange(startValue: string | null, endValue: string | null) {
-  if (!startValue) return null;
-  const start = new Date(startValue); if (Number.isNaN(start.getTime())) return null;
-  const date = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
-  const st = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  if (!endValue) return `${date} · ${st}`;
-  const end = new Date(endValue); if (Number.isNaN(end.getTime())) return `${date} · ${st}`;
-  const et = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const same = start.toDateString() === end.toDateString();
-  return same ? `${date} · ${st}–${et}` : `${date} ${st} → ${end.toLocaleDateString('en-GB',{day:'numeric',month:'short'}).toUpperCase()} ${et}`;
-}
-function dropStatusLabel(status: string | null | undefined, endValue: string | null) {
-  if (status === 'cancelled') return 'CANCELLED';
-  if (status === 'ended') return 'ENDED';
-  if (endValue && new Date(endValue).getTime() < Date.now()) return 'ENDED';
-  return null;
-}
 function formatDropTime(createdAt: string) {
   const created = new Date(createdAt);
   const now = new Date();
@@ -136,6 +121,14 @@ function formatDropTime(createdAt: string) {
 }
 
 function isJoinOpen(drop: Drop) {
+  if (drop.status !== 'active') {
+    return false;
+  }
+
+  if (drop.event_end_time && new Date(drop.event_end_time).getTime() <= Date.now()) {
+    return false;
+  }
+
   if (!drop.join_enabled) {
     return false;
   }
@@ -342,6 +335,7 @@ export default function HomeScreen() {
             join_enabled,
             interested_enabled,
             reply_enabled,
+            comments_enabled,
             join_until,
             background_color,
             image_path,
@@ -1554,59 +1548,14 @@ export default function HomeScreen() {
                     />
                   )}
 
-                  {dropStatusLabel(drop.status, drop.event_end_time) && (
-                    <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{dropStatusLabel(drop.status, drop.event_end_time)}</Text></View>
-                  )}
-
-                  {!!formatEventRange(drop.event_time, drop.event_end_time) && (
-                    <Text style={styles.eventMeta}>◷  {formatEventRange(drop.event_time, drop.event_end_time)}</Text>
-                  )}
-
-                  {!!location && (
-                    <Text
-                      style={
-                        styles.meta
-                      }
-                    >
-                      {location}
-                    </Text>
-                  )}
-
-                  {(drop.age_restriction &&
-                    drop.age_restriction !==
-                      'everyone') ||
-                  drop.join_limit ? (
-                    <View
-                      style={
-                        styles.dropDetailsRow
-                      }
-                    >
-                      {drop.age_restriction &&
-                        drop.age_restriction !==
-                          'everyone' && (
-                          <Text
-                            style={
-                              styles.detailMeta
-                            }
-                          >
-                            {drop.age_restriction ===
-                            'under16'
-                              ? 'Under 16'
-                              : drop.age_restriction}
-                          </Text>
-                        )}
-
-                      {!!drop.join_limit && (
-                        <Text
-                          style={
-                            styles.detailMeta
-                          }
-                        >
-                          Join limit · {drop.join_limit}
-                        </Text>
-                      )}
-                    </View>
-                  ) : null}
+                  <DropFeedMeta
+                    eventTime={drop.event_time}
+                    eventEndTime={drop.event_end_time}
+                    status={drop.status}
+                    location={location}
+                    ageRestriction={drop.age_restriction}
+                    joinLimit={drop.join_limit}
+                  />
 
                   {!!joinTimerLabel && (
                     <Text
@@ -1753,6 +1702,11 @@ export default function HomeScreen() {
                       )}
                     </View>
                   )}
+
+                  <DropCommentsPreview
+                    dropId={drop.id}
+                    enabled={drop.comments_enabled}
+                  />
 
                   {isOwnDrop && (
                     <>
@@ -2082,10 +2036,6 @@ const styles =
     attachedImageRadius: {
       borderRadius: 16,
     },
-
-    statusBadge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: '#2A1717', borderWidth: StyleSheet.hairlineWidth, borderColor: DropColors.wine },
-    statusBadgeText: { color: DropColors.warmWhite, fontFamily: DropTypography.semibold, fontSize: 10, letterSpacing: 1.1 },
-    eventMeta: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 12, marginTop: 9 },
 
     meta: {
       color:

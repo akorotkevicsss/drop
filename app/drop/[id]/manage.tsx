@@ -11,22 +11,22 @@ import {
   View,
 } from 'react-native';
 
-import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Profile = { id: string; username: string | null; display_name: string | null; avatar_url: string | null };
-type Participant = { requestId: string; profile: Profile };
-type DropRow = { id: string; text: string; status: 'active' | 'ended' | 'cancelled'; event_time: string | null };
+type DropStatus = 'active' | 'ended' | 'cancelled';
+type DropRow = { id: string; text: string; status: DropStatus; event_time: string | null; event_end_time: string | null };
+type GroupState = { id: string; memberIds: string[] } | null;
 
 export default function ManageDropScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [drop, setDrop] = useState<DropRow | null>(null);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participantCount, setParticipantCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [group, setGroup] = useState<GroupState>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -37,7 +37,7 @@ export default function ManageDropScreen() {
       setCurrentUserId(user.id);
       const { data: dropData, error: dropError } = await supabase
         .from('drops')
-        .select('id,text,status,event_time')
+        .select('id,text,status,event_time,event_end_time')
         .eq('id', id)
         .eq('author_id', user.id)
         .is('deleted_at', null)
@@ -48,27 +48,43 @@ export default function ManageDropScreen() {
       }
       setDrop(dropData as DropRow);
 
+      const { data: groupConversation, error: groupError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('drop_id', id)
+        .eq('conversation_type', 'group')
+        .eq('source', 'group')
+        .limit(1)
+        .maybeSingle();
+
+      if (groupError) throw groupError;
+
+      if (groupConversation?.id) {
+        const { data: groupMembers, error: groupMembersError } = await supabase
+          .from('conversation_members')
+          .select('user_id')
+          .eq('conversation_id', groupConversation.id);
+
+        if (groupMembersError) throw groupMembersError;
+
+        setGroup({
+          id: groupConversation.id,
+          memberIds: (groupMembers ?? []).map((member) => member.user_id),
+        });
+      } else {
+        setGroup(null);
+      }
+
       const { data: requests, error: requestError } = await supabase
         .from('join_requests')
-        .select('id,user_id,status')
+        .select('user_id,status')
         .eq('drop_id', id);
+
       if (requestError) throw requestError;
+
       const accepted = (requests ?? []).filter((item) => item.status === 'accepted');
+      setParticipantCount(accepted.length);
       setPendingCount((requests ?? []).filter((item) => item.status === 'pending').length);
-      const ids = accepted.map((item) => item.user_id);
-      if (!ids.length) {
-        setParticipants([]);
-        return;
-      }
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id,username,display_name,avatar_url')
-        .in('id', ids);
-      const profiles = (profileData ?? []) as Profile[];
-      setParticipants(accepted.flatMap((request) => {
-        const profile = profiles.find((item) => item.id === request.user_id);
-        return profile ? [{ requestId: request.id, profile }] : [];
-      }));
     } catch (error) {
       console.error('MANAGE DROP LOAD ERROR:', error);
       Alert.alert('Error', 'Could not load Drop management.');
@@ -79,38 +95,34 @@ export default function ManageDropScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const removeParticipant = (participant: Participant) => {
-    const name = participant.profile.display_name || participant.profile.username || 'this participant';
-    Alert.alert('Remove participant?', `${name} will leave this Drop.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive', onPress: async () => {
-          const { error } = await supabase.from('join_requests').delete().eq('id', participant.requestId);
-          if (error) {
-            Alert.alert('Error', 'Could not remove participant.');
-            return;
-          }
-          setParticipants((current) => current.filter((item) => item.requestId !== participant.requestId));
-        },
-      },
-    ]);
-  };
 
   const setStatus = (status: 'ended' | 'cancelled') => {
     if (!drop || working) return;
+
     const verb = status === 'ended' ? 'End' : 'Cancel';
-    Alert.alert(`${verb} Drop?`, status === 'ended' ? 'The Drop stays visible as history, but interactions stop.' : 'Participants will see that this Drop was cancelled.', [
+    const message = status === 'ended'
+      ? 'The Drop stays visible as history, but interactions stop.'
+      : 'Participants will see that this Drop was cancelled.';
+
+    Alert.alert(`${verb} Drop?`, message, [
       { text: 'Keep Drop', style: 'cancel' },
       {
-        text: verb, style: 'destructive', onPress: async () => {
+        text: verb,
+        style: 'destructive',
+        onPress: async () => {
           try {
             setWorking(true);
             const now = new Date().toISOString();
-            const { error } = await supabase.from('drops').update({
-              status,
-              ended_at: status === 'ended' ? now : null,
-              cancelled_at: status === 'cancelled' ? now : null,
-            }).eq('id', drop.id).eq('author_id', currentUserId);
+            const { error } = await supabase
+              .from('drops')
+              .update({
+                status,
+                ended_at: status === 'ended' ? now : null,
+                cancelled_at: status === 'cancelled' ? now : null,
+              })
+              .eq('id', drop.id)
+              .eq('author_id', currentUserId);
+
             if (error) throw error;
             setDrop({ ...drop, status });
           } catch (error) {
@@ -122,6 +134,62 @@ export default function ManageDropScreen() {
         },
       },
     ]);
+  };
+
+  const restoreDrop = () => {
+    if (!drop || working) return;
+
+    const effectiveEnd = drop.event_end_time ?? drop.event_time;
+    if (effectiveEnd && new Date(effectiveEnd).getTime() <= Date.now()) {
+      Alert.alert(
+        'Update the date first',
+        'This Drop is already in the past. Set a future start/end time in Edit Drop before restoring it.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Edit Drop',
+            onPress: () => router.push({
+              pathname: '/drop/[id]/edit',
+              params: { id: drop.id },
+            } as any),
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Restore Drop?',
+      'The Drop will become active again and interactions will be available.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          onPress: async () => {
+            try {
+              setWorking(true);
+              const { error } = await supabase
+                .from('drops')
+                .update({
+                  status: 'active',
+                  ended_at: null,
+                  cancelled_at: null,
+                })
+                .eq('id', drop.id)
+                .eq('author_id', currentUserId);
+
+              if (error) throw error;
+              setDrop({ ...drop, status: 'active' });
+            } catch (error) {
+              console.error('RESTORE DROP ERROR:', error);
+              Alert.alert('Error', 'Could not restore this Drop.');
+            } finally {
+              setWorking(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const deleteDrop = () => {
@@ -147,49 +215,128 @@ export default function ManageDropScreen() {
   };
 
   const createDropGroup = async () => {
-    if (!drop || !currentUserId || !participants.length || working) return;
+    if (!drop || !currentUserId || participantCount === 0 || working) return;
+
+    let stage = 'loading participants';
+
     try {
       setWorking(true);
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
+
+      const { data: acceptedRequests, error: acceptedError } = await supabase
+        .from('join_requests')
+        .select('user_id')
         .eq('drop_id', drop.id)
-        .eq('conversation_type', 'group')
-        .eq('source', 'group')
-        .limit(1)
-        .maybeSingle();
-      if (existing?.id) {
-        router.push(`/chat/${existing.id}`);
+        .eq('status', 'accepted');
+
+      if (acceptedError) throw acceptedError;
+
+      const acceptedUserIds = Array.from(
+        new Set((acceptedRequests ?? []).map((request) => request.user_id))
+      );
+
+      if (acceptedUserIds.length === 0) {
+        Alert.alert('No participants', 'Accept at least one participant before creating a group chat.');
         return;
       }
-      const first = participants[0]?.profile;
-      if (!first) return;
-      const { data: conversation, error: conversationError } = await supabase
-        .from('conversations')
-        .insert({
-          author_id: currentUserId,
-          participant_id: first.id,
-          conversation_type: 'group',
-          title: drop.text.length > 38 ? `${drop.text.slice(0, 38)}…` : drop.text,
-          created_by: currentUserId,
-          is_request: false,
-          source: 'group',
-          drop_id: drop.id,
-          join_request_id: null,
-        })
-        .select('id')
-        .single();
-      if (conversationError || !conversation) throw conversationError;
-      const members = [
-        { conversation_id: conversation.id, user_id: currentUserId, is_admin: true, last_read_at: new Date().toISOString() },
-        ...participants.map(({ profile }) => ({ conversation_id: conversation.id, user_id: profile.id, is_admin: false, last_read_at: null })),
+
+      stage = 'finding the group';
+      let conversationId = group?.id ?? null;
+      let existingMemberIds = group?.memberIds ?? [];
+
+      if (!conversationId) {
+        const { data: existing, error: existingError } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('drop_id', drop.id)
+          .eq('conversation_type', 'group')
+          .eq('source', 'group')
+          .limit(1)
+          .maybeSingle();
+
+        if (existingError) throw existingError;
+        conversationId = existing?.id ?? null;
+      }
+
+      if (!conversationId) {
+        stage = 'creating the group';
+        const firstParticipantId = acceptedUserIds[0];
+
+        const { data: conversation, error: conversationError } = await supabase
+          .from('conversations')
+          .insert({
+            author_id: currentUserId,
+            participant_id: firstParticipantId,
+            conversation_type: 'group',
+            title: drop.text.length > 38 ? `${drop.text.slice(0, 38)}…` : drop.text,
+            created_by: currentUserId,
+            is_request: false,
+            source: 'group',
+            drop_id: drop.id,
+            join_request_id: null,
+          })
+          .select('id')
+          .single();
+
+        if (conversationError || !conversation) {
+          throw conversationError ?? new Error('Conversation was not returned after insert.');
+        }
+
+        conversationId = conversation.id;
+        existingMemberIds = [];
+      } else if (!existingMemberIds.length) {
+        stage = 'loading group members';
+        const { data: members, error: membersError } = await supabase
+          .from('conversation_members')
+          .select('user_id')
+          .eq('conversation_id', conversationId);
+
+        if (membersError) throw membersError;
+        existingMemberIds = (members ?? []).map((member) => member.user_id);
+      }
+
+      const desiredMembers = [
+        { userId: currentUserId, isAdmin: true },
+        ...acceptedUserIds.map((userId) => ({ userId, isAdmin: false })),
       ];
-      const { error: memberError } = await supabase.from('conversation_members').insert(members);
-      if (memberError) throw memberError;
-      router.push(`/chat/${conversation.id}`);
-    } catch (error) {
-      console.error('DROP GROUP ERROR:', error);
-      Alert.alert('Error', 'Could not create the Drop group chat.');
+
+      const missingMembers = desiredMembers.filter(
+        (member) => !existingMemberIds.includes(member.userId)
+      );
+
+      if (missingMembers.length) {
+        stage = 'adding group members';
+        const { error: memberError } = await supabase
+          .from('conversation_members')
+          .insert(
+            missingMembers.map((member) => ({
+              conversation_id: conversationId,
+              user_id: member.userId,
+              is_admin: member.isAdmin,
+              last_read_at: member.isAdmin ? new Date().toISOString() : null,
+            }))
+          );
+
+        if (memberError) throw memberError;
+      }
+
+      const memberIds = Array.from(
+        new Set([...existingMemberIds, ...desiredMembers.map((member) => member.userId)])
+      );
+
+      setGroup({
+        id: conversationId,
+        memberIds,
+      });
+
+      router.push(`/chat/${conversationId}`);
+    } catch (error: any) {
+      console.warn('DROP GROUP ERROR:', { stage, error });
+
+      const detail = error?.message ? `\n\n${error.message}` : '';
+      Alert.alert(
+        'Could not create group chat',
+        `Failed while ${stage}.${detail}`
+      );
     } finally {
       setWorking(false);
     }
@@ -211,26 +358,34 @@ export default function ManageDropScreen() {
         <Text style={styles.sectionLabel}>DROP</Text>
         <ActionRow title="Edit Drop" subtitle="Content, time, place and settings" icon="create-outline" onPress={() => router.push({ pathname: '/drop/[id]/edit', params: { id: drop.id } } as any)} />
         <ActionRow title="Join requests" subtitle={pendingCount ? `${pendingCount} waiting` : 'No pending requests'} icon="person-add-outline" onPress={() => router.push({ pathname: '/requests', params: { dropId: drop.id } })} />
-        <ActionRow title="Group chat" subtitle={participants.length ? `Create or open chat with ${participants.length} participant${participants.length === 1 ? '' : 's'}` : 'No participants yet'} icon="chatbubbles-outline" onPress={createDropGroup} disabled={!participants.length || working} />
-
-        <Text style={styles.sectionLabel}>PARTICIPANTS · {participants.length}</Text>
-        {participants.length === 0 ? (
-          <View style={styles.empty}><Text style={styles.emptyTitle}>Nobody has joined yet.</Text><Text style={styles.emptyText}>Accepted users will appear here and become part of the active Drop.</Text></View>
-        ) : participants.map((participant) => {
-          const name = participant.profile.display_name || participant.profile.username || 'User';
-          return (
-            <Pressable key={participant.requestId} style={styles.participantRow} onPress={() => participant.profile.username && router.push(`/user/${encodeURIComponent(participant.profile.username)}`)}>
-              <UserAvatar uri={participant.profile.avatar_url} name={name} size={40} />
-              <View style={styles.participantCopy}><Text style={styles.participantName}>{name}</Text>{!!participant.profile.username && <Text style={styles.participantUsername}>@{participant.profile.username}</Text>}</View>
-              <Pressable hitSlop={10} onPress={(event) => { event.stopPropagation(); removeParticipant(participant); }}><Text style={styles.remove}>Remove</Text></Pressable>
-            </Pressable>
-          );
-        })}
+        <ActionRow
+          title={group ? 'Open group chat' : 'Group chat'}
+          subtitle={
+            participantCount
+              ? `${group ? 'Open and sync' : 'Create chat'} with ${participantCount} participant${participantCount === 1 ? '' : 's'}`
+              : 'No participants yet'
+          }
+          icon="chatbubbles-outline"
+          onPress={createDropGroup}
+          disabled={participantCount === 0 || working}
+        />
+        <ActionRow
+          title="Participants"
+          subtitle={`${participantCount} accepted participant${participantCount === 1 ? '' : 's'}`}
+          icon="people-outline"
+          onPress={() =>
+            router.push({
+              pathname: '/drop/[id]/participants',
+              params: { id: drop.id },
+            } as any)
+          }
+        />
 
         <Text style={styles.sectionLabel}>LIFECYCLE</Text>
         <View style={styles.statusRow}><Text style={styles.statusLabel}>Status</Text><Text style={styles.statusValue}>{drop.status.toUpperCase()}</Text></View>
         {drop.status === 'active' && <ActionRow title="End Drop" subtitle="Keep it as history and stop interactions" icon="checkmark-circle-outline" onPress={() => setStatus('ended')} />}
         {drop.status === 'active' && <ActionRow title="Cancel Drop" subtitle="Mark the event as cancelled" icon="close-circle-outline" onPress={() => setStatus('cancelled')} danger />}
+        {drop.status !== 'active' && <ActionRow title="Restore Drop" subtitle="Make this Drop active again" icon="refresh-circle-outline" onPress={restoreDrop} />}
         <ActionRow title="Delete Drop" subtitle="Remove it from the app" icon="trash-outline" onPress={deleteDrop} danger />
       </ScrollView>
     </View>
@@ -263,14 +418,6 @@ const styles = StyleSheet.create({
   actionTitle: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 13 },
   actionSubtitle: { color: DropColors.textMuted, fontFamily: DropTypography.regular, fontSize: 10, marginTop: 3 },
   chevron: { color: DropColors.warmWhite, fontFamily: DropTypography.light, fontSize: 24 },
-  participantRow: { minHeight: 64, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border },
-  participantCopy: { flex: 1, marginLeft: 11 },
-  participantName: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 13 },
-  participantUsername: { color: DropColors.textMuted, fontFamily: DropTypography.regular, fontSize: 11, marginTop: 2 },
-  remove: { color: DropColors.textSecondary, fontFamily: DropTypography.regular, fontSize: 11 },
-  empty: { paddingHorizontal: 18, paddingVertical: 22, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border },
-  emptyTitle: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 13 },
-  emptyText: { color: DropColors.textMuted, fontFamily: DropTypography.regular, fontSize: 10, lineHeight: 15, marginTop: 4 },
   statusRow: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DropColors.border, backgroundColor: '#151515' },
   statusLabel: { color: DropColors.textSecondary, fontFamily: DropTypography.regular, fontSize: 12 },
   statusValue: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 10, letterSpacing: 1.2 },

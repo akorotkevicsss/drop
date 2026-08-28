@@ -1,15 +1,6 @@
-import {
-  router,
-  useFocusEffect,
-} from 'expo-router';
-
-import {
-  useCallback,
-  useState,
-} from 'react';
-
 import Ionicons from '@expo/vector-icons/Ionicons';
-
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -20,15 +11,10 @@ import {
 } from 'react-native';
 
 import { UserAvatar } from '@/components/user-avatar';
-import {
-  DropColors,
-  DropTypography,
-} from '@/constants/theme';
+import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type InboxMode =
-  | 'messages'
-  | 'requests';
+type InboxMode = 'messages' | 'groups' | 'requests';
 
 type Profile = {
   id: string;
@@ -46,10 +32,8 @@ type Member = {
 type ConversationRow = {
   id: string;
   author_id: string;
-  participant_id: string;
-  conversation_type:
-    | 'direct'
-    | 'group';
+  participant_id: string | null;
+  conversation_type: 'direct' | 'group';
   title: string | null;
   created_by: string | null;
   is_request: boolean;
@@ -61,29 +45,20 @@ type MessageRow = {
   conversation_id: string;
   sender_id: string;
   text: string | null;
-  message_type:
-    | 'text'
-    | 'image'
-    | 'video'
-    | 'voice';
+  message_type: 'text' | 'image' | 'video' | 'voice';
   created_at: string;
 };
 
 type EventRow = {
   conversation_id: string;
-  event_type:
-    | 'join'
-    | 'reply';
-  drop_text_snapshot:
-    string | null;
+  event_type: 'join' | 'reply';
+  drop_text_snapshot: string | null;
   created_at: string;
 };
 
 type InboxConversation = {
   id: string;
-  conversationType:
-    | 'direct'
-    | 'group';
+  conversationType: 'direct' | 'group';
   title: string;
   avatarUrl: string | null;
   preview: string;
@@ -92,21 +67,10 @@ type InboxConversation = {
   isRequest: boolean;
 };
 
-function formatInboxTime(
-  dateString: string
-) {
-  const date =
-    new Date(dateString);
-
-  const difference =
-    Date.now() -
-    date.getTime();
-
-  const minutes =
-    Math.floor(
-      difference /
-        60000
-    );
+function formatInboxTime(dateString: string) {
+  const date = new Date(dateString);
+  const difference = Date.now() - date.getTime();
+  const minutes = Math.floor(difference / 60000);
 
   if (minutes < 1) {
     return 'now';
@@ -116,923 +80,575 @@ function formatInboxTime(
     return `${minutes}m`;
   }
 
-  const hours =
-    Math.floor(
-      minutes / 60
-    );
+  const hours = Math.floor(minutes / 60);
 
   if (hours < 24) {
     return `${hours}h`;
   }
 
-  const days =
-    Math.floor(
-      hours / 24
-    );
+  const days = Math.floor(hours / 24);
 
   if (days < 7) {
     return `${days}d`;
   }
 
-  return date.toLocaleDateString(
-    undefined,
-    {
-      day: 'numeric',
-      month: 'short',
-    }
-  );
+  return date.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  });
 }
 
-function messagePreview(
-  message:
-    MessageRow | null
-) {
+function messagePreview(message: MessageRow | null) {
   if (!message) {
     return null;
   }
 
-  if (
-    message.message_type ===
-    'image'
-  ) {
+  if (message.message_type === 'image') {
     return 'Photo';
   }
 
-  if (
-    message.message_type ===
-    'video'
-  ) {
+  if (message.message_type === 'video') {
     return 'Video';
   }
 
-  if (
-    message.message_type ===
-    'voice'
-  ) {
+  if (message.message_type === 'voice') {
     return 'Voice message';
   }
 
+  return message.text || 'Message';
+}
+
+function formatBadge(count: number) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return count > 99 ? '99+' : String(count);
+}
+
+function SegmentBadge({ count }: { count: number }) {
+  const label = formatBadge(count);
+
+  if (!label) {
+    return null;
+  }
+
   return (
-    message.text ||
-    'Message'
+    <View style={styles.segmentBadge}>
+      <Text style={styles.segmentBadgeText}>{label}</Text>
+    </View>
   );
 }
 
 export default function InboxScreen() {
-  const [
-    mode,
-    setMode,
-  ] =
-    useState<InboxMode>(
-      'messages'
-    );
+  const [mode, setMode] = useState<InboxMode>('messages');
+  const [conversations, setConversations] = useState<InboxConversation[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [
-    conversations,
-    setConversations,
-  ] =
-    useState<
-      InboxConversation[]
-    >([]);
+  const loadConversations = useCallback(async () => {
+    try {
+      setLoading(true);
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(true);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  const loadConversations =
-    useCallback(
-      async () => {
-        try {
-          setLoading(
-            true
-          );
+      if (!user) {
+        setConversations([]);
+        return;
+      }
 
-          const {
-            data: {
-              user,
-            },
-          } =
-            await supabase.auth.getUser();
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('conversation_members')
+        .select(`
+          conversation_id,
+          user_id,
+          last_read_at
+        `)
+        .eq('user_id', user.id)
+        .is('left_at', null);
 
-          if (!user) {
-            setConversations(
-              []
-            );
-            return;
-          }
+      if (membershipError) {
+        console.warn('INBOX MEMBERSHIPS ERROR:', membershipError);
+        return;
+      }
 
-          const {
-            data:
-              membershipData,
-            error:
-              membershipError,
-          } =
-            await supabase
-              .from(
-                'conversation_members'
-              )
-              .select(`
-                conversation_id,
-                user_id,
-                last_read_at
-              `)
-              .eq(
-                'user_id',
-                user.id
-              )
-              .is(
-                'left_at',
-                null
-              );
+      const memberships = (membershipData ?? []) as Member[];
 
-          if (
-            membershipError
-          ) {
-            console.error(
-              'INBOX MEMBERSHIPS ERROR:',
-              membershipError
-            );
-            return;
-          }
+      if (memberships.length === 0) {
+        setConversations([]);
+        return;
+      }
 
-          const memberships =
-            (
-              membershipData ??
-              []
-            ) as Member[];
+      const conversationIds = memberships.map((item) => item.conversation_id);
 
-          if (
-            memberships.length ===
-            0
-          ) {
-            setConversations(
-              []
-            );
-            return;
-          }
+      const { data: conversationData, error: conversationError } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          author_id,
+          participant_id,
+          conversation_type,
+          title,
+          created_by,
+          is_request,
+          created_at
+        `)
+        .in('id', conversationIds);
 
-          const conversationIds =
-            memberships.map(
-              (item) =>
-                item.conversation_id
-            );
+      if (conversationError) {
+        console.warn('INBOX CONVERSATIONS ERROR:', conversationError);
+        return;
+      }
 
-          const {
-            data:
-              conversationData,
-            error:
-              conversationError,
-          } =
-            await supabase
-              .from(
-                'conversations'
-              )
-              .select(`
-                id,
-                author_id,
-                participant_id,
-                conversation_type,
-                title,
-                created_by,
-                is_request,
-                created_at
-              `)
-              .in(
-                'id',
-                conversationIds
-              );
+      const rawConversations = (conversationData ?? []) as ConversationRow[];
 
-          if (
-            conversationError
-          ) {
-            console.error(
-              'INBOX CONVERSATIONS ERROR:',
-              conversationError
-            );
-            return;
-          }
+      const { data: allMembersData, error: allMembersError } = await supabase
+        .from('conversation_members')
+        .select(`
+          conversation_id,
+          user_id,
+          last_read_at
+        `)
+        .in('conversation_id', conversationIds)
+        .is('left_at', null);
 
-          const rawConversations =
-            (
-              conversationData ??
-              []
-            ) as ConversationRow[];
+      if (allMembersError) {
+        console.warn('INBOX ALL MEMBERS ERROR:', allMembersError);
+      }
 
-          const {
-            data:
-              allMembersData,
-            error:
-              allMembersError,
-          } =
-            await supabase
-              .from(
-                'conversation_members'
-              )
-              .select(`
-                conversation_id,
-                user_id,
-                last_read_at
-              `)
-              .in(
-                'conversation_id',
-                conversationIds
-              )
-              .is(
-                'left_at',
-                null
-              );
+      const allMembers = (allMembersData ?? []) as Member[];
 
-          if (
-            allMembersError
-          ) {
-            console.error(
-              'INBOX ALL MEMBERS ERROR:',
-              allMembersError
-            );
-          }
+      const otherUserIds = [
+        ...new Set(
+          allMembers
+            .filter((member) => member.user_id !== user.id)
+            .map((member) => member.user_id)
+        ),
+      ];
 
-          const allMembers =
-            (
-              allMembersData ??
-              []
-            ) as Member[];
+      let profiles: Profile[] = [];
 
-          const otherUserIds =
-            [
-              ...new Set(
-                allMembers
-                  .filter(
-                    (member) =>
-                      member.user_id !==
-                      user.id
-                  )
-                  .map(
-                    (member) =>
-                      member.user_id
-                  )
-              ),
-            ];
+      if (otherUserIds.length > 0) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select(`
+            id,
+            username,
+            display_name,
+            avatar_url
+          `)
+          .in('id', otherUserIds);
 
-          let profiles:
-            Profile[] = [];
-
-          if (
-            otherUserIds.length >
-            0
-          ) {
-            const {
-              data,
-              error,
-            } =
-              await supabase
-                .from(
-                  'profiles'
-                )
-                .select(`
-                  id,
-                  username,
-                  display_name,
-                  avatar_url
-                `)
-                .in(
-                  'id',
-                  otherUserIds
-                );
-
-            if (error) {
-              console.error(
-                'INBOX PROFILES ERROR:',
-                error
-              );
-            } else {
-              profiles =
-                (
-                  data ??
-                  []
-                ) as Profile[];
-            }
-          }
-
-          const {
-            data:
-              messageData,
-            error:
-              messageError,
-          } =
-            await supabase
-              .from(
-                'messages'
-              )
-              .select(`
-                id,
-                conversation_id,
-                sender_id,
-                text,
-                message_type,
-                created_at
-              `)
-              .in(
-                'conversation_id',
-                conversationIds
-              )
-              .is(
-                'deleted_for_everyone_at',
-                null
-              )
-              .order(
-                'created_at',
-                {
-                  ascending:
-                    false,
-                }
-              );
-
-          if (
-            messageError
-          ) {
-            console.error(
-              'INBOX MESSAGES ERROR:',
-              messageError
-            );
-          }
-
-          const messages =
-            (
-              messageData ??
-              []
-            ) as MessageRow[];
-
-          const {
-            data:
-              eventData,
-            error:
-              eventError,
-          } =
-            await supabase
-              .from(
-                'conversation_events'
-              )
-              .select(`
-                conversation_id,
-                event_type,
-                drop_text_snapshot,
-                created_at
-              `)
-              .in(
-                'conversation_id',
-                conversationIds
-              )
-              .order(
-                'created_at',
-                {
-                  ascending:
-                    false,
-                }
-              );
-
-          if (
-            eventError
-          ) {
-            console.error(
-              'INBOX EVENTS ERROR:',
-              eventError
-            );
-          }
-
-          const events =
-            (
-              eventData ??
-              []
-            ) as EventRow[];
-
-          const next =
-            rawConversations.map(
-              (
-                conversation
-              ) => {
-                const myMembership =
-                  memberships.find(
-                    (item) =>
-                      item.conversation_id ===
-                      conversation.id
-                  );
-
-                const members =
-                  allMembers.filter(
-                    (item) =>
-                      item.conversation_id ===
-                      conversation.id
-                  );
-
-                const others =
-                  members.filter(
-                    (member) =>
-                      member.user_id !==
-                      user.id
-                  );
-
-                const otherProfiles =
-                  others
-                    .map(
-                      (member) =>
-                        profiles.find(
-                          (profile) =>
-                            profile.id ===
-                            member.user_id
-                        )
-                    )
-                    .filter(
-                      (
-                        profile
-                      ): profile is Profile =>
-                        !!profile
-                    );
-
-                const lastMessage =
-                  messages.find(
-                    (message) =>
-                      message.conversation_id ===
-                      conversation.id
-                  ) ??
-                  null;
-
-                const lastEvent =
-                  events.find(
-                    (event) =>
-                      event.conversation_id ===
-                      conversation.id
-                  ) ??
-                  null;
-
-                const messageTime =
-                  lastMessage
-                    ? new Date(
-                        lastMessage.created_at
-                      ).getTime()
-                    : 0;
-
-                const eventTime =
-                  lastEvent
-                    ? new Date(
-                        lastEvent.created_at
-                      ).getTime()
-                    : 0;
-
-                const lastActivityAt =
-                  messageTime >=
-                  eventTime
-                    ? lastMessage
-                        ?.created_at ??
-                      conversation.created_at
-                    : lastEvent
-                        ?.created_at ??
-                      conversation.created_at;
-
-                let preview =
-                  'Start a conversation';
-
-                if (
-                  messageTime >=
-                    eventTime &&
-                  lastMessage
-                ) {
-                  preview =
-                    messagePreview(
-                      lastMessage
-                    ) ??
-                    preview;
-                } else if (
-                  lastEvent
-                ) {
-                  preview =
-                    lastEvent.event_type ===
-                    'join'
-                      ? 'Joined a Drop'
-                      : 'Replied to a Drop';
-                }
-
-                const lastReadAt =
-                  myMembership
-                    ?.last_read_at;
-
-                const unread =
-                  !!lastMessage &&
-                  lastMessage.sender_id !==
-                    user.id &&
-                  (
-                    !lastReadAt ||
-                    new Date(
-                      lastMessage.created_at
-                    ).getTime() >
-                      new Date(
-                        lastReadAt
-                      ).getTime()
-                  );
-
-                if (
-                  conversation.conversation_type ===
-                  'group'
-                ) {
-                  return {
-                    id:
-                      conversation.id,
-                    conversationType:
-                      'group' as const,
-                    title:
-                      conversation.title?.trim() ||
-                      otherProfiles
-                        .slice(
-                          0,
-                          3
-                        )
-                        .map(
-                          (profile) =>
-                            profile.display_name ||
-                            profile.username ||
-                            'User'
-                        )
-                        .join(
-                          ', '
-                        ) ||
-                      'Group',
-                    avatarUrl:
-                      null,
-                    preview,
-                    lastActivityAt,
-                    unread,
-                    isRequest:
-                      conversation.is_request,
-                  };
-                }
-
-                const other =
-                  otherProfiles[0];
-
-                return {
-                  id:
-                    conversation.id,
-                  conversationType:
-                    'direct' as const,
-                  title:
-                    other?.display_name ||
-                    other?.username ||
-                    'Unnamed user',
-                  avatarUrl:
-                    other?.avatar_url ??
-                    null,
-                  preview,
-                  lastActivityAt,
-                  unread,
-                  isRequest:
-                    conversation.is_request &&
-                    conversation.created_by !==
-                      user.id,
-                };
-              }
-            );
-
-          next.sort(
-            (a, b) =>
-              new Date(
-                b.lastActivityAt
-              ).getTime() -
-              new Date(
-                a.lastActivityAt
-              ).getTime()
-          );
-
-          setConversations(
-            next
-          );
-        } finally {
-          setLoading(
-            false
-          );
+        if (error) {
+          console.warn('INBOX PROFILES ERROR:', error);
+        } else {
+          profiles = (data ?? []) as Profile[];
         }
-      },
-      []
-    );
+      }
+
+      const { data: messageData, error: messageError } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          conversation_id,
+          sender_id,
+          text,
+          message_type,
+          created_at
+        `)
+        .in('conversation_id', conversationIds)
+        .is('deleted_for_everyone_at', null)
+        .order('created_at', {
+          ascending: false,
+        });
+
+      if (messageError) {
+        console.warn('INBOX MESSAGES ERROR:', messageError);
+      }
+
+      const messages = (messageData ?? []) as MessageRow[];
+
+      const { data: eventData, error: eventError } = await supabase
+        .from('conversation_events')
+        .select(`
+          conversation_id,
+          event_type,
+          drop_text_snapshot,
+          created_at
+        `)
+        .in('conversation_id', conversationIds)
+        .order('created_at', {
+          ascending: false,
+        });
+
+      if (eventError) {
+        console.warn('INBOX EVENTS ERROR:', eventError);
+      }
+
+      const events = (eventData ?? []) as EventRow[];
+
+      const next = rawConversations.map((conversation) => {
+        const myMembership = memberships.find(
+          (item) => item.conversation_id === conversation.id
+        );
+
+        const members = allMembers.filter(
+          (item) => item.conversation_id === conversation.id
+        );
+
+        const others = members.filter((member) => member.user_id !== user.id);
+
+        const otherProfiles = others
+          .map((member) =>
+            profiles.find((profile) => profile.id === member.user_id)
+          )
+          .filter((profile): profile is Profile => !!profile);
+
+        const lastMessage =
+          messages.find(
+            (message) => message.conversation_id === conversation.id
+          ) ?? null;
+
+        const lastEvent =
+          events.find((event) => event.conversation_id === conversation.id) ??
+          null;
+
+        const messageTime = lastMessage
+          ? new Date(lastMessage.created_at).getTime()
+          : 0;
+
+        const eventTime = lastEvent
+          ? new Date(lastEvent.created_at).getTime()
+          : 0;
+
+        const lastActivityAt =
+          messageTime >= eventTime
+            ? lastMessage?.created_at ?? conversation.created_at
+            : lastEvent?.created_at ?? conversation.created_at;
+
+        let preview = 'Start a conversation';
+
+        if (messageTime >= eventTime && lastMessage) {
+          preview = messagePreview(lastMessage) ?? preview;
+        } else if (lastEvent) {
+          preview =
+            lastEvent.event_type === 'join'
+              ? 'Joined a Drop'
+              : 'Replied to a Drop';
+        }
+
+        const lastReadAt = myMembership?.last_read_at;
+
+        const unread =
+          !!lastMessage &&
+          lastMessage.sender_id !== user.id &&
+          (!lastReadAt ||
+            new Date(lastMessage.created_at).getTime() >
+              new Date(lastReadAt).getTime());
+
+        if (conversation.conversation_type === 'group') {
+          return {
+            id: conversation.id,
+            conversationType: 'group' as const,
+            title:
+              conversation.title?.trim() ||
+              otherProfiles
+                .slice(0, 3)
+                .map(
+                  (profile) =>
+                    profile.display_name || profile.username || 'User'
+                )
+                .join(', ') ||
+              'Group',
+            avatarUrl: null,
+            preview,
+            lastActivityAt,
+            unread,
+            isRequest: false,
+          };
+        }
+
+        const other = otherProfiles[0];
+
+        return {
+          id: conversation.id,
+          conversationType: 'direct' as const,
+          title:
+            other?.display_name || other?.username || 'Unnamed user',
+          avatarUrl: other?.avatar_url ?? null,
+          preview,
+          lastActivityAt,
+          unread,
+          isRequest:
+            conversation.is_request &&
+            conversation.created_by !== user.id,
+        };
+      });
+
+      next.sort(
+        (a, b) =>
+          new Date(b.lastActivityAt).getTime() -
+          new Date(a.lastActivityAt).getTime()
+      );
+
+      setConversations(next);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
-    useCallback(
-      () => {
-        loadConversations();
-      },
-      [
-        loadConversations,
-      ]
-    )
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
   );
 
-  const visible =
-    conversations.filter(
-      (conversation) =>
-        mode ===
-        'requests'
-          ? conversation.isRequest
-          : !conversation.isRequest
-    );
+  const counts = useMemo(() => {
+    let messages = 0;
+    let groups = 0;
+    let requests = 0;
+
+    conversations.forEach((conversation) => {
+      if (conversation.isRequest) {
+        requests += 1;
+        return;
+      }
+
+      if (conversation.conversationType === 'group') {
+        if (conversation.unread) {
+          groups += 1;
+        }
+        return;
+      }
+
+      if (conversation.unread) {
+        messages += 1;
+      }
+    });
+
+    return {
+      messages,
+      groups,
+      requests,
+    };
+  }, [conversations]);
+
+  const visible = useMemo(() => {
+    return conversations.filter((conversation) => {
+      if (mode === 'requests') {
+        return conversation.isRequest;
+      }
+
+      if (mode === 'groups') {
+        return (
+          !conversation.isRequest &&
+          conversation.conversationType === 'group'
+        );
+      }
+
+      return (
+        !conversation.isRequest &&
+        conversation.conversationType === 'direct'
+      );
+    });
+  }, [conversations, mode]);
+
+  const emptyCopy = useMemo(() => {
+    if (mode === 'groups') {
+      return {
+        title: 'No group chats yet.',
+        subtitle: 'Drop groups and other group conversations will appear here.',
+      };
+    }
+
+    if (mode === 'requests') {
+      return {
+        title: 'No requests.',
+        subtitle: 'New message requests will appear here.',
+      };
+    }
+
+    return {
+      title: 'No messages yet.',
+      subtitle: 'Start a conversation or reply to a Drop.',
+    };
+  }, [mode]);
 
   return (
-    <View
-      style={
-        styles.container
-      }
-    >
-      <View
-        style={
-          styles.header
-        }
-      >
-        <Text
-          style={
-            styles.title
-          }
-        >
-          Messages
-        </Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Messages</Text>
 
-        <Text
-          style={
-            styles.subtitle
-          }
-        >
-          Keep conversations and requests in one place.
+        <Text style={styles.subtitle}>
+          Keep conversations, groups and requests in one place.
         </Text>
       </View>
 
-      <View
-        style={
-          styles.modeRow
-        }
-      >
+      <View style={styles.modeRow}>
         <Pressable
-          style={
-            styles.modeButton
-          }
-          onPress={() =>
-            setMode(
-              'messages'
-            )
-          }
+          style={styles.modeButton}
+          onPress={() => setMode('messages')}
         >
-          <Text
-            style={[
-              styles.modeText,
-              mode ===
-                'messages' &&
-                styles.modeTextActive,
-            ]}
-          >
-            Messages
-          </Text>
+          <View style={styles.modeLabelRow}>
+            <Text
+              style={[
+                styles.modeText,
+                mode === 'messages' && styles.modeTextActive,
+              ]}
+            >
+              Messages
+            </Text>
+
+            <SegmentBadge count={counts.messages} />
+          </View>
 
           <View
             style={[
               styles.modeLine,
-              mode ===
-                'messages' &&
-                styles.modeLineActive,
+              mode === 'messages' && styles.modeLineActive,
             ]}
           />
         </Pressable>
 
-        <View
-          style={
-            styles.modeDivider
-          }
-        />
+        <View style={styles.modeDivider} />
 
         <Pressable
-          style={
-            styles.modeButton
-          }
-          onPress={() =>
-            setMode(
-              'requests'
-            )
-          }
+          style={styles.modeButton}
+          onPress={() => setMode('groups')}
         >
-          <Text
-            style={[
-              styles.modeText,
-              mode ===
-                'requests' &&
-                styles.modeTextActive,
-            ]}
-          >
-            Requests
-          </Text>
+          <View style={styles.modeLabelRow}>
+            <Text
+              style={[
+                styles.modeText,
+                mode === 'groups' && styles.modeTextActive,
+              ]}
+            >
+              Group Chats
+            </Text>
+
+            <SegmentBadge count={counts.groups} />
+          </View>
 
           <View
             style={[
               styles.modeLine,
-              mode ===
-                'requests' &&
-                styles.modeLineActive,
+              mode === 'groups' && styles.modeLineActive,
+            ]}
+          />
+        </Pressable>
+
+        <View style={styles.modeDivider} />
+
+        <Pressable
+          style={styles.modeButton}
+          onPress={() => setMode('requests')}
+        >
+          <View style={styles.modeLabelRow}>
+            <Text
+              style={[
+                styles.modeText,
+                mode === 'requests' && styles.modeTextActive,
+              ]}
+            >
+              Requests
+            </Text>
+
+            <SegmentBadge count={counts.requests} />
+          </View>
+
+          <View
+            style={[
+              styles.modeLine,
+              mode === 'requests' && styles.modeLineActive,
             ]}
           />
         </Pressable>
       </View>
 
       {loading ? (
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <ActivityIndicator
-            color={
-              DropColors.warmWhite
-            }
-          />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={DropColors.warmWhite} />
         </View>
-      ) : visible.length ===
-        0 ? (
-        <View
-          style={
-            styles.emptyContainer
-          }
-        >
-          <Text
-            style={
-              styles.emptyTitle
-            }
-          >
-            {mode ===
-            'messages'
-              ? 'No messages yet.'
-              : 'No requests.'}
-          </Text>
-
-          <Text
-            style={
-              styles.emptySubtitle
-            }
-          >
-            {mode ===
-            'messages'
-              ? 'Start a conversation or reply to a Drop.'
-              : 'New message requests will appear here.'}
-          </Text>
+      ) : visible.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>{emptyCopy.title}</Text>
+          <Text style={styles.emptySubtitle}>{emptyCopy.subtitle}</Text>
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={
-            styles.listContent
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
         >
-          {visible.map(
-            (
-              conversation
-            ) => (
-              <Pressable
-                key={
-                  conversation.id
-                }
-                style={({ pressed }) => [
-                  styles.conversation,
-                  pressed &&
-                    styles.conversationPressed,
-                ]}
-                onPress={() =>
-                  router.push(
-                    `/chat/${conversation.id}`
-                  )
-                }
-              >
-                <View
-                  style={
-                    styles.avatar
-                  }
-                >
-                  {conversation.conversationType ===
-                  'group' ? (
-                    <View
-                      style={
-                        styles.groupAvatar
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.groupAvatarText
-                        }
-                      >
-                        {
-                          conversation.title
-                            .trim()
-                            .slice(
-                              0,
-                              1
-                            )
-                            .toUpperCase()
-                        }
-                      </Text>
-                    </View>
-                  ) : (
-                    <UserAvatar
-                      uri={
-                        conversation.avatarUrl
-                      }
-                      name={
-                        conversation.title
-                      }
-                      size={
-                        46
-                      }
-                    />
-                  )}
-                </View>
+          {visible.map((conversation) => (
+            <Pressable
+              key={conversation.id}
+              style={({ pressed }) => [
+                styles.conversation,
+                pressed && styles.conversationPressed,
+              ]}
+              onPress={() => router.push(`/chat/${conversation.id}`)}
+            >
+              <View style={styles.avatar}>
+                {conversation.conversationType === 'group' ? (
+                  <View style={styles.groupAvatar}>
+                    <Text style={styles.groupAvatarText}>
+                      {conversation.title.trim().slice(0, 1).toUpperCase()}
+                    </Text>
+                  </View>
+                ) : (
+                  <UserAvatar
+                    uri={conversation.avatarUrl}
+                    name={conversation.title}
+                    size={46}
+                  />
+                )}
+              </View>
 
-                <View
-                  style={
-                    styles.conversationContent
-                  }
-                >
-                  <View
-                    style={
-                      styles.topRow
-                    }
+              <View style={styles.conversationContent}>
+                <View style={styles.topRow}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.name,
+                      conversation.unread && styles.nameUnread,
+                    ]}
                   >
-                    <Text
-                      numberOfLines={
-                        1
-                      }
-                      style={[
-                        styles.name,
-                        conversation.unread &&
-                          styles.nameUnread,
-                      ]}
-                    >
-                      {
-                        conversation.title
-                      }
+                    {conversation.title}
+                  </Text>
+
+                  <View style={styles.rightMeta}>
+                    <Text style={styles.time}>
+                      {formatInboxTime(conversation.lastActivityAt)}
                     </Text>
 
-                    <View
-                      style={
-                        styles.rightMeta
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.time
-                        }
-                      >
-                        {formatInboxTime(
-                          conversation.lastActivityAt
-                        )}
-                      </Text>
-
-                      {conversation.unread && (
-                        <View
-                          style={
-                            styles.unreadDot
-                          }
-                        />
-                      )}
-                    </View>
+                    {conversation.unread && (
+                      <View style={styles.unreadDot} />
+                    )}
                   </View>
-
-                  <Text
-                    style={[
-                      styles.preview,
-                      conversation.unread &&
-                        styles.previewUnread,
-                    ]}
-                    numberOfLines={
-                      1
-                    }
-                  >
-                    {
-                      conversation.preview
-                    }
-                  </Text>
                 </View>
-              </Pressable>
-            )
-          )}
+
+                <Text
+                  style={[
+                    styles.preview,
+                    conversation.unread && styles.previewUnread,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {conversation.preview}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
         </ScrollView>
       )}
 
       <Pressable
-        onPress={() =>
-          router.push(
-            '/new-message'
-          )
-        }
-        hitSlop={
-          8
-        }
+        onPress={() => router.push('/new-message')}
+        hitSlop={8}
         style={({ pressed }) => [
           styles.floatingCreateButton,
-          pressed &&
-            styles.floatingCreateButtonPressed,
+          pressed && styles.floatingCreateButtonPressed,
         ]}
       >
         <Ionicons
@@ -1045,275 +661,255 @@ export default function InboxScreen() {
   );
 }
 
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        DropColors.graphite,
-    },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: DropColors.graphite,
+  },
 
-    header: {
-      minHeight: 128,
-      paddingTop: 52,
-      paddingHorizontal: 18,
-      paddingBottom: 18,
-      borderBottomWidth:
-        StyleSheet.hairlineWidth,
-      borderBottomColor:
-        DropColors.border,
-      justifyContent: 'flex-end',
-    },
+  header: {
+    minHeight: 128,
+    paddingTop: 52,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+    justifyContent: 'flex-end',
+  },
 
-    title: {
-      color: DropColors.warmWhite,
-      fontFamily: DropTypography.light,
-      fontWeight: '300',
-      fontSize: 30,
-      lineHeight: 36,
-      letterSpacing: 0,
-    },
+  title: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.light,
+    fontWeight: '300',
+    fontSize: 30,
+    lineHeight: 36,
+  },
 
-    subtitle: {
-      color: DropColors.textSecondary,
-      fontFamily: DropTypography.regular,
-      fontWeight: '400',
-      fontSize: 12,
-      lineHeight: 16,
-      marginTop: 3,
-    },
+  subtitle: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.regular,
+    fontWeight: '400',
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 3,
+  },
 
-    modeRow: {
-      height: 42,
-      flexDirection: 'row',
-      alignItems: 'stretch',
-      borderBottomWidth:
-        StyleSheet.hairlineWidth,
-      borderBottomColor:
-        DropColors.border,
-    },
+  modeRow: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+  },
 
-    modeButton: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-    },
+  modeButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    paddingHorizontal: 4,
+  },
 
-    modeText: {
-      color: DropColors.textMuted,
-      fontFamily: DropTypography.regular,
-      fontSize: 14,
-    },
+  modeLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
 
-    modeTextActive: {
-      color: DropColors.warmWhite,
-      fontFamily: DropTypography.medium,
-    },
+  modeText: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+  },
 
-    modeLine: {
-      position: 'absolute',
-      left: 18,
-      right: 18,
-      bottom: 0,
-      height: 1,
-      backgroundColor: 'transparent',
-    },
+  modeTextActive: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+  },
 
-    modeLineActive: {
-      backgroundColor: DropColors.wine,
-    },
+  segmentBadge: {
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 8.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DropColors.wine,
+  },
 
-    modeDivider: {
-      width: StyleSheet.hairlineWidth,
-      height: 20,
-      alignSelf: 'center',
-      backgroundColor: DropColors.border,
-    },
+  segmentBadgeText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 9,
+    lineHeight: 11,
+    includeFontPadding: false,
+  },
 
-    loadingContainer: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent:
-        'center',
-    },
+  modeLine: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 0,
+    height: 1,
+    backgroundColor: 'transparent',
+  },
 
-    listContent: {
-      paddingBottom: 88,
-    },
+  modeLineActive: {
+    backgroundColor: DropColors.wine,
+  },
 
-    conversation: {
-      minHeight: 72,
-      paddingHorizontal: 18,
-      paddingVertical: 12,
-      borderBottomWidth:
-        StyleSheet.hairlineWidth,
-      borderBottomColor:
-        DropColors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
+  modeDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 20,
+    alignSelf: 'center',
+    backgroundColor: DropColors.border,
+  },
 
-    conversationPressed: {
-      opacity: 0.62,
-    },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-    avatar: {
-      width: 46,
-      height: 46,
-      marginRight: 12,
-    },
+  listContent: {
+    paddingBottom: 88,
+  },
 
-    groupAvatar: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
-      alignItems: 'center',
-      justifyContent:
-        'center',
-      backgroundColor:
-        DropColors.surface,
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-    },
+  conversation: {
+    minHeight: 72,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 
-    groupAvatarText: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.semibold,
-      fontSize: 17,
-    },
+  conversationPressed: {
+    opacity: 0.62,
+  },
 
-    conversationContent: {
-      flex: 1,
-    },
+  avatar: {
+    width: 46,
+    height: 46,
+    marginRight: 12,
+  },
 
-    topRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent:
-        'space-between',
-      gap: 10,
-    },
+  groupAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DropColors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+  },
 
-    name: {
-      flex: 1,
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 14,
-    },
+  groupAvatarText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 17,
+  },
 
-    nameUnread: {
-      fontFamily:
-        DropTypography.semibold,
-    },
+  conversationContent: {
+    flex: 1,
+  },
 
-    rightMeta: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
 
-    time: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 11,
-    },
+  name: {
+    flex: 1,
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 14,
+  },
 
-    unreadDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor:
-        DropColors.wine,
-    },
+  nameUnread: {
+    fontFamily: DropTypography.semibold,
+  },
 
-    preview: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 12,
-      marginTop: 4,
-    },
+  rightMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
 
-    previewUnread: {
-      color:
-        DropColors.textSecondary,
-    },
+  time: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 11,
+  },
 
-    emptyContainer: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent:
-        'center',
-      paddingHorizontal: 40,
-      paddingBottom: 50,
-    },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: DropColors.wine,
+  },
 
-    emptyTitle: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 16,
-    },
+  preview: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 12,
+    marginTop: 4,
+  },
 
-    emptySubtitle: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 13,
-      lineHeight: 19,
-      textAlign: 'center',
-      marginTop: 7,
-    },
-      floatingCreateButton: {
-        position: 'absolute',
-        right: 18,
-        bottom: 18,
-        width: 46,
-        height: 46,
-        borderRadius: 23,
-        backgroundColor: DropColors.wine,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: DropColors.border,
-        zIndex: 20,
-        elevation: 6,
+  previewUnread: {
+    color: DropColors.textSecondary,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 50,
+  },
+
+  emptyTitle: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 16,
+  },
+
+  emptySubtitle: {
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+
+  floatingCreateButton: {
+    position: 'absolute',
+    right: 18,
+    bottom: 18,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: DropColors.wine,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+    zIndex: 20,
+    elevation: 6,
+  },
+
+  floatingCreateButtonPressed: {
+    opacity: 0.72,
+    transform: [
+      {
+        scale: 0.97,
       },
-
-    floatingCreateButtonPressed: {
-      opacity: 0.72,
-      transform: [
-        {
-          scale: 0.97,
-        },
-      ],
-    },
-
-    floatingCreateText: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.light,
-      fontSize: 44,
-      lineHeight: 42,
-      textAlign: 'center',
-      includeFontPadding: false,
-      transform: [
-        {
-          translateY: 6,
-        },
-      ],
-    },
-  });
+    ],
+  },
+});

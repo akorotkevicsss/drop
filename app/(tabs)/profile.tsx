@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 
+import { DropCommentsPreview } from '@/components/drop-comments-preview';
+import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
@@ -32,31 +34,16 @@ type Drop = {
   location_text: string | null;
   event_time: string | null;
   event_end_time: string | null;
-  status: string | null;
+  status: 'active' | 'ended' | 'cancelled';
+  age_restriction: string | null;
+  join_limit: number | null;
   created_at: string;
   background_color: string | null;
   image_path: string | null;
   attached_image_path: string | null;
+  comments_enabled: boolean;
 };
 
-
-function formatEventRange(startValue: string | null, endValue: string | null) {
-  if (!startValue) return null;
-  const start = new Date(startValue); if (Number.isNaN(start.getTime())) return null;
-  const date = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
-  const st = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  if (!endValue) return `${date} · ${st}`;
-  const end = new Date(endValue); if (Number.isNaN(end.getTime())) return `${date} · ${st}`;
-  const et = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const same = start.toDateString() === end.toDateString();
-  return same ? `${date} · ${st}–${et}` : `${date} ${st} → ${end.toLocaleDateString('en-GB',{day:'numeric',month:'short'}).toUpperCase()} ${et}`;
-}
-function dropStatusLabel(status: string | null | undefined, endValue: string | null) {
-  if (status === 'cancelled') return 'CANCELLED';
-  if (status === 'ended') return 'ENDED';
-  if (endValue && new Date(endValue).getTime() < Date.now()) return 'ENDED';
-  return null;
-}
 function formatDropTime(createdAt: string) {
   const minutes = Math.floor(
     (Date.now() - new Date(createdAt).getTime()) / 60000
@@ -121,10 +108,13 @@ export default function ProfileScreen() {
           event_time,
           event_end_time,
           status,
+          age_restriction,
+          join_limit,
           created_at,
           background_color,
           image_path,
-          attached_image_path
+          attached_image_path,
+          comments_enabled
         `)
         .eq('author_id', user.id)
         .is('deleted_at', null)
@@ -334,12 +324,20 @@ export default function ProfileScreen() {
                   />
                 )}
 
-                {dropStatusLabel(drop.status, drop.event_end_time) && <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{dropStatusLabel(drop.status, drop.event_end_time)}</Text></View>}
-                {!!formatEventRange(drop.event_time, drop.event_end_time) && <Text style={styles.eventMeta}>◷  {formatEventRange(drop.event_time, drop.event_end_time)}</Text>}
-                <Text style={styles.dropMeta}>
-                  {location ? `${location} · ` : ''}
-                  {formatDropTime(drop.created_at)}
-                </Text>
+                <DropFeedMeta
+                  eventTime={drop.event_time}
+                  eventEndTime={drop.event_end_time}
+                  status={drop.status}
+                  location={location}
+                  ageRestriction={drop.age_restriction}
+                  joinLimit={drop.join_limit}
+                />
+                <Text style={styles.dropMeta}>{formatDropTime(drop.created_at)}</Text>
+
+                <DropCommentsPreview
+                  dropId={drop.id}
+                  enabled={drop.comments_enabled}
+                />
               </Pressable>
             );
           })
@@ -538,9 +536,6 @@ const styles = StyleSheet.create({
   attachedImageRadius: {
     borderRadius: 16,
   },
-  statusBadge: { alignSelf: 'flex-start', marginTop: 9, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#2A1717', borderWidth: StyleSheet.hairlineWidth, borderColor: DropColors.wine },
-  statusBadgeText: { color: DropColors.warmWhite, fontFamily: DropTypography.semibold, fontSize: 9, letterSpacing: 1 },
-  eventMeta: { color: DropColors.warmWhite, fontFamily: DropTypography.medium, fontSize: 11, marginTop: 8 },
   dropMeta: {
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
