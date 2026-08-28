@@ -45,6 +45,7 @@ type Drop = {
   event_time: string | null;
   event_end_time: string | null;
   status: 'active' | 'ended' | 'cancelled';
+  rating_enabled: boolean;
   age_restriction: string | null;
   join_limit: number | null;
   created_at: string;
@@ -183,6 +184,7 @@ export default function UserProfileScreen() {
           event_time,
           event_end_time,
           status,
+          rating_enabled,
           age_restriction,
           join_limit,
           created_at,
@@ -731,6 +733,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.dropMeta}>{formatDropTime(drop.created_at)}</Text>
 
                 {drop.status === 'ended' &&
+                  drop.rating_enabled &&
                   (
                     joinStatus === 'accepted'
                       ? true

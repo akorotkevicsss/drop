@@ -329,6 +329,7 @@ export default function CreateScreen() {
   const [datePicker, setDatePicker] = useState<'start' | 'end' | null>(null);
   const [joinMode, setJoinMode] = useState<JoinMode>('request');
   const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const [ratingEnabled, setRatingEnabled] = useState(false);
   const [dressCode, setDressCode] = useState('');
   const [priceText, setPriceText] = useState('');
   const [languageText, setLanguageText] = useState('');
@@ -455,6 +456,7 @@ export default function CreateScreen() {
         setDatePicker(null);
         setJoinMode('request');
         setCommentsEnabled(false);
+        setRatingEnabled(false);
         setDressCode('');
         setPriceText('');
         setLanguageText('');
@@ -1017,6 +1019,7 @@ export default function CreateScreen() {
               event_end_time: eventEnd ? eventEnd.toISOString() : null,
               status: 'active',
               comments_enabled: commentsEnabled,
+              rating_enabled: ratingEnabled,
               dress_code: dressCode.trim() || null,
               price_text: priceText.trim() || null,
               language_text: languageText.trim() || null,
@@ -1465,6 +1468,12 @@ export default function CreateScreen() {
                   subtitle="Public questions and discussion under the Drop."
                   value={commentsEnabled}
                   onPress={() => setCommentsEnabled((value) => !value)}
+                />
+                <SelectToggleRow
+                  title="Event rating"
+                  subtitle="Participants can rate this Drop after it ends."
+                  value={ratingEnabled}
+                  onPress={() => setRatingEnabled((value) => !value)}
                 />
               </View>
             )}
@@ -2259,9 +2268,8 @@ const styles =
     v3MultilinePlaceholder: {
       position: 'absolute',
       right: 0,
-      top: '50%',
-      transform: [{ translateY: -8 }],
-      lineHeight: 16,
+      top: 0,
+      bottom: 0,
       textAlignVertical: 'center',
       color: DropColors.textMuted,
       fontFamily: DropTypography.regular,

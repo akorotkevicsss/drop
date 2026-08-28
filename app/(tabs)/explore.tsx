@@ -53,6 +53,7 @@ type Drop = {
   interested_enabled: boolean;
   reply_enabled: boolean;
   comments_enabled: boolean;
+  rating_enabled: boolean;
   join_until: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -486,6 +487,7 @@ export default function ExploreScreen() {
               interested_enabled,
               reply_enabled,
               comments_enabled,
+            rating_enabled,
               join_until,
               background_color,
               image_path,
@@ -2178,13 +2180,17 @@ export default function ExploreScreen() {
                     </Pressable>
 
                   {(!isOwnDrop ||
-                    drop.status === 'ended') && (
+                    drop.status === 'ended') &&
+                    (
+                      drop.status !== 'ended' ||
+                      drop.rating_enabled
+                    ) && (
                       <View
                         style={
                           styles.actions
                         }
                       >
-                        {drop.status === 'ended' ? (
+                        {drop.status === 'ended' && drop.rating_enabled ? (
                           !isOwnDrop &&
                           joinStatus === 'accepted' ? (
                             <TouchableOpacity
