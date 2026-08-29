@@ -1827,12 +1827,63 @@ export default function ChatScreen() {
         return;
       }
 
-      setMessages(
+      const loadedMessages =
         (
           data ??
           []
-        ) as Message[]
-      );
+        ) as Message[];
+
+      const imageMessages =
+        loadedMessages.filter(
+          (message) =>
+            message.message_type === 'image' &&
+            !!message.media_path &&
+            !message.deleted_for_everyone_at
+        );
+
+      if (imageMessages.length > 0) {
+        const measuredRatios =
+          await Promise.all(
+            imageMessages.map(
+              async (message) => {
+                const mediaUrl = supabase.storage
+                  .from('message-images')
+                  .getPublicUrl(message.media_path as string)
+                  .data.publicUrl;
+
+                return await new Promise<[string, number] | null>(
+                  (resolve) => {
+                    Image.getSize(
+                      mediaUrl,
+                      (width, height) => {
+                        resolve(
+                          width > 0 && height > 0
+                            ? [message.id, width / height]
+                            : null
+                        );
+                      },
+                      () => resolve(null)
+                    );
+                  }
+                );
+              }
+            )
+          );
+
+        setImageAspectRatios((current) => {
+          const next = { ...current };
+
+          measuredRatios.forEach((entry) => {
+            if (entry) {
+              next[entry[0]] = entry[1];
+            }
+          });
+
+          return next;
+        });
+      }
+
+      setMessages(loadedMessages);
     };
 
   const loadEvents =
@@ -3276,7 +3327,7 @@ export default function ChatScreen() {
         Platform.OS ===
         'ios'
           ? 'padding'
-          : 'height'
+          : undefined
       }
       keyboardVerticalOffset={
         Platform.OS ===

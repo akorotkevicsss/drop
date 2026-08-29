@@ -37,6 +37,7 @@ export default function EditDropScreen() {
   const [capacity, setCapacity] = useState('');
   const [replyEnabled, setReplyEnabled] = useState(true);
   const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const [ratingEnabled, setRatingEnabled] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -47,7 +48,7 @@ export default function EditDropScreen() {
         if (!user) return;
         const { data, error } = await supabase
           .from('drops')
-          .select('text,event_time,event_end_time,location_text,age_restriction,join_limit,join_enabled,join_mode,reply_enabled,comments_enabled,dress_code,conditions,price_text,language_text,hashtags')
+          .select('text,event_time,event_end_time,location_text,age_restriction,join_limit,join_enabled,join_mode,reply_enabled,comments_enabled,rating_enabled,dress_code,conditions,price_text,language_text,hashtags')
           .eq('id', id).eq('author_id', user.id).maybeSingle();
         if (error || !data) { Alert.alert('Error', 'Could not load this Drop.'); return; }
         setText(data.text ?? '');
@@ -65,6 +66,7 @@ export default function EditDropScreen() {
         setCapacity(data.join_limit ? String(data.join_limit) : '');
         setReplyEnabled(data.reply_enabled ?? true);
         setCommentsEnabled(data.comments_enabled ?? false);
+        setRatingEnabled(data.rating_enabled ?? false);
       } finally { setLoading(false); }
     };
     load();
@@ -101,6 +103,7 @@ export default function EditDropScreen() {
         join_limit: joinEnabled ? parsedCapacity : null,
         reply_enabled: replyEnabled,
         comments_enabled: commentsEnabled,
+        rating_enabled: ratingEnabled,
       }).eq('id', id).eq('author_id', user.id);
       if (error) throw error;
       router.back();
@@ -113,7 +116,7 @@ export default function EditDropScreen() {
   if (loading) return <View style={styles.center}><Stack.Screen options={{ headerShown: false }} /><ActivityIndicator color={DropColors.warmWhite} /></View>;
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerSide}><Text style={styles.cancel}>Cancel</Text></Pressable>
@@ -169,6 +172,12 @@ export default function EditDropScreen() {
           subtitle="Public questions and discussion under the Drop."
           value={commentsEnabled}
           onPress={() => setCommentsEnabled((value) => !value)}
+        />
+        <SelectToggleRow
+          title="Event rating"
+          subtitle="Participants can rate this Drop after it ends."
+          value={ratingEnabled}
+          onPress={() => setRatingEnabled((value) => !value)}
         />
       </ScrollView>
 

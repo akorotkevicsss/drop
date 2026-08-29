@@ -36,6 +36,7 @@ type DropRow = {
   join_mode: JoinMode;
   reply_enabled: boolean;
   comments_enabled: boolean;
+  rating_enabled: boolean;
   age_restriction: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -110,7 +111,7 @@ export default function DropDetailScreen() {
         .select(`
           id, author_id, text, city, event_time, event_end_time, location_text,
           join_enabled, join_until, join_limit, join_mode, reply_enabled,
-          comments_enabled, age_restriction, background_color, image_path,
+          comments_enabled, rating_enabled, age_restriction, background_color, image_path,
           attached_image_path, attached_video_path, dress_code, conditions,
           price_text, language_text, hashtags, status, created_at
         `)
@@ -465,16 +466,30 @@ export default function DropDetailScreen() {
           <View style={styles.socialMetric}><HeartIcon liked={liked || isOwner} size={20} /><Text style={styles.socialText}>{likeCount}</Text></View>
         </View>
 
-        {drop.comments_enabled && !ended && (
-          <Pressable style={styles.sectionLink} onPress={() => Alert.alert('Comments', 'Comments UI is the next Drop v2 layer.')}>
-            <View><Text style={styles.sectionLinkTitle}>Comments</Text><Text style={styles.sectionLinkSubtitle}>Questions and public discussion</Text></View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        )}
+        <Pressable
+          style={styles.sectionLink}
+          onPress={() =>
+            router.push({
+              pathname: '/drop/[id]/comments',
+              params: { id: drop.id },
+            } as any)
+          }
+        >
+          <View>
+            <Text style={styles.sectionLinkTitle}>Comments</Text>
+            <Text style={styles.sectionLinkSubtitle}>
+              {drop.comments_enabled
+                ? 'Questions and public discussion'
+                : 'Comments are disabled for this Drop'}
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
 
         {isOwner ? (
           <>
-            {drop.status === 'ended' && (
+            {drop.status === 'ended' &&
+              drop.rating_enabled && (
               <Pressable
                 style={styles.ratesRow}
                 onPress={() =>
@@ -503,6 +518,7 @@ export default function DropDetailScreen() {
             </Pressable>
           </>
         ) : drop.status === 'ended' &&
+          drop.rating_enabled &&
           joinStatus === 'accepted' ? (
           <Pressable
             style={[
@@ -518,6 +534,7 @@ export default function DropDetailScreen() {
             </Text>
           </Pressable>
         ) : drop.status === 'ended' &&
+          drop.rating_enabled &&
           ratingAverage !== null ? (
           <View
             style={[

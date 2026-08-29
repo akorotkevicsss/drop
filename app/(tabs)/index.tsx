@@ -56,6 +56,7 @@ type Drop = {
   reply_enabled: boolean;
   comments_enabled: boolean;
   rating_enabled: boolean;
+  join_mode: 'request' | 'free' | 'invite_only';
   join_until: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -444,6 +445,7 @@ export default function HomeScreen() {
             event_end_time,
             status,
             join_enabled,
+            join_mode,
             interested_enabled,
             reply_enabled,
             comments_enabled,
@@ -1139,37 +1141,29 @@ export default function HomeScreen() {
           currentStatus ===
           'pending'
         ) {
-          const {
-                    error,
-                  } =
-                    await supabase.rpc(
-                      'decline_drop_reschedule',
-                      {
-                        p_drop_id:
-                          drop.id,
-                      }
-                    );
+          const { error } = await supabase
+            .from('join_requests')
+            .delete()
+            .eq('drop_id', drop.id)
+            .eq('user_id', currentUserId);
 
           if (error) {
             Alert.alert(
               'Error',
               'Could not cancel your request.'
             );
-
             return;
           }
 
-          setJoinStatuses(
-            (current) => ({
-              ...current,
-
-              [drop.id]:
-                'none',
-            })
-          );
+          setJoinStatuses((current) => ({
+            ...current,
+            [drop.id]: 'none',
+          }));
 
           return;
         }
+
+        
 
         if (
           currentStatus ===
@@ -1302,6 +1296,19 @@ export default function HomeScreen() {
           }
         }
 
+        if (drop.join_mode === 'invite_only') {
+          Alert.alert(
+            'Invite only',
+            'This Drop is invite only.'
+          );
+          return;
+        }
+
+        const nextStatus: 'pending' | 'accepted' =
+          drop.join_mode === 'free'
+            ? 'accepted'
+            : 'pending';
+
         const {
           error,
         } =
@@ -1317,7 +1324,7 @@ export default function HomeScreen() {
                 currentUserId,
 
               status:
-                'pending',
+                nextStatus,
             });
 
         if (error) {
@@ -1334,7 +1341,7 @@ export default function HomeScreen() {
             ...current,
 
             [drop.id]:
-              'pending',
+              nextStatus,
           })
         );
       } finally {
@@ -2013,6 +2020,7 @@ export default function HomeScreen() {
                       <View
                         style={[
                           styles.dropVisual,
+                          styles.dropVisualSolid,
                           {
                             backgroundColor:
                               drop.background_color ??
@@ -2620,6 +2628,11 @@ const styles =
         'center',
     },
 
+    dropVisualSolid: {
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+    },
+
     dropVisualImage: {
       borderRadius: 16,
     },
@@ -2840,6 +2853,50 @@ const styles =
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
+      fontSize: 13,
+    },
+
+
+    emptyContainer: {
+      minHeight: 320,
+      paddingHorizontal: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    emptyTitle: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
+      fontSize: 17,
+      textAlign: 'center',
+    },
+
+    emptySubtitle: {
+      marginTop: 7,
+      maxWidth: 300,
+      color: DropColors.textMuted,
+      fontFamily: DropTypography.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: 'center',
+    },
+
+    emptyExplore: {
+      marginTop: 18,
+      minWidth: 128,
+      height: 40,
+      paddingHorizontal: 16,
+      borderRadius: 16,
+      backgroundColor: DropColors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: DropColors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    emptyExploreText: {
+      color: DropColors.warmWhite,
+      fontFamily: DropTypography.medium,
       fontSize: 13,
     },
 

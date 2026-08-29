@@ -217,6 +217,113 @@ function base64ToArrayBuffer(
   return bytes.buffer;
 }
 
+
+function FieldRow({
+    label,
+    value,
+    placeholder,
+    onPress,
+    onChangeText,
+    keyboardType = 'default',
+    multiline = false,
+    optional = false,
+    suffix = '',
+  }: any) {
+  return (
+    <Pressable
+      style={[
+        styles.v3FieldRow,
+        multiline && styles.v3FieldRowMultiline,
+      ]}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <Text style={styles.v3FieldLabel}>{label}</Text>
+
+      {onChangeText ? (
+        <View style={styles.v3InputWrap}>
+          {multiline && !value && (
+            <Text
+              pointerEvents="none"
+              style={styles.v3MultilinePlaceholder}
+            >
+              {placeholder}
+            </Text>
+          )}
+
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={multiline ? '' : placeholder}
+            placeholderTextColor={DropColors.textMuted}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            style={[
+              styles.v3FieldInput,
+              multiline && styles.v3FieldInputMultiline,
+            ]}
+            selectionColor={DropColors.wine}
+          />
+
+          {!!value && !!suffix && (
+            <Text style={styles.v3Suffix}>{suffix}</Text>
+          )}
+        </View>
+      ) : (
+        <View style={styles.v3ValueWrap}>
+          <Text
+            style={[
+              styles.v3FieldValue,
+              !value && styles.v3Placeholder,
+            ]}
+            numberOfLines={1}
+          >
+            {value || placeholder}
+          </Text>
+
+          {optional && (
+            <Text style={styles.v3Optional}>OPTIONAL</Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function SelectToggleRow({
+    title,
+    subtitle,
+    value,
+    onPress,
+  }: {
+    title: string;
+    subtitle: string;
+    value: boolean;
+    onPress: () => void;
+  }) {
+  return (
+    <Pressable
+      style={[
+        styles.v3ModeRow,
+        value && styles.v3ModeRowActive,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.v3ModeCopy}>
+        <Text style={styles.v3RowTitle}>{title}</Text>
+        <Text style={styles.v3RowSubtitle}>{subtitle}</Text>
+      </View>
+
+      <View
+        style={[
+          styles.v3Radio,
+          value && styles.v3RadioActive,
+        ]}
+      />
+    </Pressable>
+  );
+}
+
 export default function CreateScreen() {
   const [
     text,
@@ -1154,110 +1261,9 @@ export default function CreateScreen() {
     ? value.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '';
 
-  const FieldRow = ({
-    label,
-    value,
-    placeholder,
-    onPress,
-    onChangeText,
-    keyboardType = 'default',
-    multiline = false,
-    optional = false,
-    suffix = '',
-  }: any) => (
-    <Pressable
-      style={[
-        styles.v3FieldRow,
-        multiline && styles.v3FieldRowMultiline,
-      ]}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <Text style={styles.v3FieldLabel}>{label}</Text>
-
-      {onChangeText ? (
-        <View style={styles.v3InputWrap}>
-          {multiline && !value && (
-            <Text
-              pointerEvents="none"
-              style={styles.v3MultilinePlaceholder}
-            >
-              {placeholder}
-            </Text>
-          )}
-
-          <TextInput
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={multiline ? '' : placeholder}
-            placeholderTextColor={DropColors.textMuted}
-            keyboardType={keyboardType}
-            multiline={multiline}
-            style={[
-              styles.v3FieldInput,
-              multiline && styles.v3FieldInputMultiline,
-            ]}
-            selectionColor={DropColors.wine}
-          />
-
-          {!!value && !!suffix && (
-            <Text style={styles.v3Suffix}>{suffix}</Text>
-          )}
-        </View>
-      ) : (
-        <View style={styles.v3ValueWrap}>
-          <Text
-            style={[
-              styles.v3FieldValue,
-              !value && styles.v3Placeholder,
-            ]}
-            numberOfLines={1}
-          >
-            {value || placeholder}
-          </Text>
-
-          {optional && (
-            <Text style={styles.v3Optional}>OPTIONAL</Text>
-          )}
-        </View>
-      )}
-    </Pressable>
-  );
-
-  const SelectToggleRow = ({
-    title,
-    subtitle,
-    value,
-    onPress,
-  }: {
-    title: string;
-    subtitle: string;
-    value: boolean;
-    onPress: () => void;
-  }) => (
-    <Pressable
-      style={[
-        styles.v3ModeRow,
-        value && styles.v3ModeRowActive,
-      ]}
-      onPress={onPress}
-    >
-      <View style={styles.v3ModeCopy}>
-        <Text style={styles.v3RowTitle}>{title}</Text>
-        <Text style={styles.v3RowSubtitle}>{subtitle}</Text>
-      </View>
-
-      <View
-        style={[
-          styles.v3Radio,
-          value && styles.v3RadioActive,
-        ]}
-      />
-    </Pressable>
-  );
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.v3Screen}>
         <View style={styles.v3Header}>
           <Pressable onPress={handleCancel} disabled={loading} style={styles.v3HeaderSide}><Text style={styles.v3Cancel}>Cancel</Text></Pressable>
@@ -1268,7 +1274,13 @@ export default function CreateScreen() {
         {loadingDefaults ? <View style={styles.loadingDefaults}><ActivityIndicator color={DropColors.warmWhite} /></View> : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.v3Content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
             <Text style={styles.v3SectionLabel}>DROP</Text>
-            <View style={styles.v3ComposerBox}>
+            <View
+              style={[
+                styles.v3ComposerBox,
+                backgroundColor && styles.v3ComposerBoxBackground,
+                backgroundColor && { backgroundColor },
+              ]}
+            >
               <TextInput
                 style={styles.v3MainInput}
                 placeholder="What do you want to do?"
@@ -2211,6 +2223,12 @@ const styles =
       minHeight: 144,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: DropColors.border,
+    },
+    v3ComposerBoxBackground: {
+      marginHorizontal: 18,
+      borderRadius: 18,
+      overflow: 'hidden',
+      borderBottomWidth: 0,
     },
     v3MainInput: {
       minHeight: 144,

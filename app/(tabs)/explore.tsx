@@ -59,6 +59,7 @@ type Drop = {
   reply_enabled: boolean;
   comments_enabled: boolean;
   rating_enabled: boolean;
+  join_mode: 'request' | 'free' | 'invite_only';
   join_until: string | null;
   background_color: string | null;
   image_path: string | null;
@@ -509,6 +510,7 @@ export default function ExploreScreen() {
             event_end_time,
             status,
               join_enabled,
+              join_mode,
               interested_enabled,
               reply_enabled,
               comments_enabled,
@@ -1222,23 +1224,15 @@ export default function ExploreScreen() {
         );
 
         if (
-          currentStatus ===
-          'pending'
+          currentStatus === 'pending'
         ) {
-          const {
-                    error,
-                  } =
-                    await supabase.rpc(
-                      'decline_drop_reschedule',
-                      {
-                        p_drop_id:
-                          drop.id,
-                      }
-                    );
+          const { error } = await supabase
+            .from('join_requests')
+            .delete()
+            .eq('drop_id', drop.id)
+            .eq('user_id', currentUserId);
 
-          if (
-            error
-          ) {
+          if (error) {
             Alert.alert(
               'Error',
               'Could not cancel your request.'
@@ -1246,15 +1240,10 @@ export default function ExploreScreen() {
             return;
           }
 
-          setJoinStatuses(
-            (
-              current
-            ) => ({
-              ...current,
-              [drop.id]:
-                'none',
-            })
-          );
+          setJoinStatuses((current) => ({
+            ...current,
+            [drop.id]: 'none',
+          }));
           return;
         }
 
@@ -1390,6 +1379,19 @@ export default function ExploreScreen() {
           }
         }
 
+        if (drop.join_mode === 'invite_only') {
+          Alert.alert(
+            'Invite only',
+            'This Drop is invite only.'
+          );
+          return;
+        }
+
+        const nextStatus: 'pending' | 'accepted' =
+          drop.join_mode === 'free'
+            ? 'accepted'
+            : 'pending';
+
         const {
           error,
         } =
@@ -1403,7 +1405,7 @@ export default function ExploreScreen() {
               user_id:
                 currentUserId,
               status:
-                'pending',
+                nextStatus,
             });
 
         if (
@@ -1421,8 +1423,7 @@ export default function ExploreScreen() {
             current
           ) => ({
             ...current,
-            [drop.id]:
-              'pending',
+            [drop.id]: nextStatus,
           })
         );
       } finally {
@@ -2209,6 +2210,7 @@ export default function ExploreScreen() {
                         <View
                           style={[
                             styles.dropVisual,
+                          styles.dropVisualSolid,
                             {
                               backgroundColor:
                                 drop.background_color ??
@@ -2592,13 +2594,7 @@ export default function ExploreScreen() {
 
       {mode ===
         'search' && (
-        <ExplorePeopleSearch
-          onBack={() =>
-            setMode(
-              'feed'
-            )
-          }
-        />
+        <ExplorePeopleSearch />
       )}
 
       {mode ===
@@ -2949,6 +2945,11 @@ const styles =
         'hidden',
       justifyContent:
         'center',
+    },
+
+    dropVisualSolid: {
+      paddingHorizontal: 18,
+      paddingVertical: 18,
     },
 
     dropVisualImage: {
