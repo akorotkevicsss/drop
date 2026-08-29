@@ -5,6 +5,7 @@ import {
 
 import {
   useCallback,
+  useRef,
   useState,
 } from 'react';
 
@@ -12,11 +13,13 @@ import {
   ActivityIndicator,
   Alert,
   ImageBackground,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,6 +28,8 @@ import { DropFeedMeta } from '@/components/drop-feed-meta';
 import { DropRatingPicker } from '@/components/drop-rating-picker';
 import { HeartIcon } from '@/components/icons/HeartIcon';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Location from 'expo-location';
+import MapView from 'react-native-maps';
 
 import { ExplorePeopleSearch } from '@/components/explore-people-search';
 import { UserAvatar } from '@/components/user-avatar';
@@ -223,6 +228,26 @@ export default function ExploreScreen() {
     >(
       'feed'
     );
+
+  const mapRef =
+    useRef<MapView | null>(
+      null
+    );
+
+  const [
+    addressSearchOpen,
+    setAddressSearchOpen,
+  ] = useState(false);
+
+  const [
+    addressQuery,
+    setAddressQuery,
+  ] = useState('');
+
+  const [
+    addressSearching,
+    setAddressSearching,
+  ] = useState(false);
 
   const [
     drops,
@@ -1723,6 +1748,75 @@ export default function ExploreScreen() {
       );
     };
 
+  const handleAddressSearch =
+    async () => {
+      const query =
+        addressQuery.trim();
+
+      if (
+        !query ||
+        addressSearching
+      ) {
+        return;
+      }
+
+      try {
+        setAddressSearching(
+          true
+        );
+
+        const results =
+          await Location.geocodeAsync(
+            query
+          );
+
+        const firstResult =
+          results[0];
+
+        if (
+          !firstResult
+        ) {
+          Alert.alert(
+            'Address',
+            'Could not find this address.'
+          );
+          return;
+        }
+
+        setAddressSearchOpen(
+          false
+        );
+
+        mapRef.current?.animateToRegion(
+          {
+            latitude:
+              firstResult.latitude,
+            longitude:
+              firstResult.longitude,
+            latitudeDelta:
+              0.012,
+            longitudeDelta:
+              0.012,
+          },
+          650
+        );
+      } catch (error) {
+        console.error(
+          'ADDRESS SEARCH ERROR:',
+          error
+        );
+
+        Alert.alert(
+          'Address',
+          'Could not search for this address.'
+        );
+      } finally {
+        setAddressSearching(
+          false
+        );
+      }
+    };
+
   if (
     loading
   ) {
@@ -2509,37 +2603,44 @@ export default function ExploreScreen() {
 
       {mode ===
         'map' && (
-        <View
-          style={
-            styles.mapPlaceholder
-          }
-        >
-          <Text
-            style={
-              styles.mapPlaceholderTitle
-            }
-          >
-            Map
-          </Text>
-
-          <Text
-            style={
-              styles.mapPlaceholderText
-            }
-          >
-            Nearby Drops will appear here.
-          </Text>
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            initialRegion={{
+              latitude: 56.9496,
+              longitude: 24.1052,
+              latitudeDelta: 0.12,
+              longitudeDelta: 0.12,
+            }}
+            showsCompass
+            rotateEnabled
+            pitchEnabled
+            scrollEnabled
+            zoomEnabled
+            toolbarEnabled={false}
+          />
         </View>
       )}
 
       {mode !==
         'search' && (
         <Pressable
-          onPress={() =>
+          onPress={() => {
+            if (
+              mode ===
+              'map'
+            ) {
+              setAddressSearchOpen(
+                true
+              );
+              return;
+            }
+
             setMode(
               'search'
-            )
-          }
+            );
+          }}
           style={({ pressed }) => [
             styles.floatingFindButton,
             pressed &&
@@ -2553,6 +2654,102 @@ export default function ExploreScreen() {
           />
         </Pressable>
       )}
+      <Modal
+        visible={
+          addressSearchOpen
+        }
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setAddressSearchOpen(
+            false
+          )
+        }
+      >
+        <Pressable
+          style={styles.addressModalBackdrop}
+          onPress={() =>
+            setAddressSearchOpen(
+              false
+            )
+          }
+        >
+          <Pressable
+            style={styles.addressSearchCard}
+            onPress={() => {}}
+          >
+            <Text
+              style={styles.addressSearchTitle}
+            >
+              Search address
+            </Text>
+
+            <TextInput
+              value={addressQuery}
+              onChangeText={setAddressQuery}
+              placeholder="Street, city or place"
+              placeholderTextColor={
+                DropColors.textMuted
+              }
+              autoFocus
+              returnKeyType="search"
+              selectionColor={
+                DropColors.wine
+              }
+              style={styles.addressSearchInput}
+              onSubmitEditing={
+                handleAddressSearch
+              }
+            />
+
+            <View
+              style={styles.addressSearchActions}
+            >
+              <Pressable
+                onPress={() =>
+                  setAddressSearchOpen(
+                    false
+                  )
+                }
+                style={styles.addressCancelButton}
+              >
+                <Text
+                  style={styles.addressCancelText}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={
+                  handleAddressSearch
+                }
+                disabled={
+                  addressSearching ||
+                  !addressQuery.trim()
+                }
+                style={[
+                  styles.addressSearchButton,
+                  (
+                    addressSearching ||
+                    !addressQuery.trim()
+                  ) &&
+                    styles.addressSearchButtonDisabled,
+                ]}
+              >
+                <Text
+                  style={styles.addressSearchButtonText}
+                >
+                  {addressSearching
+                    ? '...'
+                    : 'Search'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <DropRatingPicker
         visible={
           ratingDropId !==
@@ -3005,36 +3202,111 @@ const styles =
         14,
     },
 
-    mapPlaceholder: {
+    mapContainer: {
       flex: 1,
-      alignItems:
-        'center',
-      justifyContent:
-        'center',
-      paddingHorizontal:
-        28,
+      overflow: 'hidden',
     },
 
-    mapPlaceholderTitle: {
+    map: {
+      flex: 1,
+    },
+
+    addressModalBackdrop: {
+      flex: 1,
+      backgroundColor:
+        'rgba(0,0,0,0.62)',
+      justifyContent:
+        'flex-start',
+      paddingTop: 112,
+      paddingHorizontal: 18,
+    },
+
+    addressSearchCard: {
+      backgroundColor:
+        DropColors.surface,
+      borderRadius: 18,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      padding: 16,
+    },
+
+    addressSearchTitle: {
       color:
         DropColors.warmWhite,
       fontFamily:
         DropTypography.medium,
-      fontSize:
-        17,
+      fontSize: 16,
+      marginBottom: 12,
     },
 
-    mapPlaceholderText: {
+    addressSearchInput: {
+      height: 46,
+      borderRadius: 14,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+      backgroundColor:
+        DropColors.graphite,
+      paddingHorizontal: 14,
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 15,
+    },
+
+    addressSearchActions: {
+      marginTop: 14,
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 10,
+    },
+
+    addressCancelButton: {
+      minWidth: 86,
+      height: 40,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        DropColors.graphite,
+      borderWidth:
+        StyleSheet.hairlineWidth,
+      borderColor:
+        DropColors.border,
+    },
+
+    addressCancelText: {
       color:
         DropColors.textSecondary,
       fontFamily:
-        DropTypography.regular,
-      fontSize:
-        13,
-      marginTop:
-        6,
-      textAlign:
-        'center',
+        DropTypography.medium,
+      fontSize: 13,
+    },
+
+    addressSearchButton: {
+      minWidth: 96,
+      height: 40,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        DropColors.wine,
+    },
+
+    addressSearchButtonDisabled: {
+      opacity: 0.45,
+    },
+
+    addressSearchButtonText: {
+      color:
+        DropColors.warmWhite,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 13,
     },
 
     floatingFindButton: {
