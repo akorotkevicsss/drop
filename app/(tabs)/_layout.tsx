@@ -6,7 +6,6 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/lib/supabase';
-import { warmAppCache } from '@/lib/warm-app-cache';
 
 type MembershipRow = {
   conversation_id: string;
@@ -366,30 +365,13 @@ export default function TabLayout() {
       router.prefetch('/requests');
       router.prefetch('/edit-profile');
       router.prefetch('/new-message');
-      router.prefetch('/create');
-    }, 250);
+      router.prefetch('/(tabs)/create');
+      router.prefetch('/(tabs)/activity');
+    }, 80);
 
     return () => {
       clearTimeout(timer);
     };
-  }, []);
-
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      router.prefetch('/settings');
-      router.prefetch('/requests');
-      router.prefetch('/edit-profile');
-      router.prefetch('/new-message');
-      router.prefetch('/(tabs)/create');
-      router.prefetch('/(tabs)/activity');
-
-      warmAppCache().catch((error) => {
-        console.warn('APP PREFETCH ERROR:', error);
-      });
-    }, 50);
-
-    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -399,8 +381,6 @@ export default function TabLayout() {
         headerShown: false,
         lazy: false,
         animation: 'none',
-        animation: 'fade',
-        lazy: false,
         tabBarButton: HapticTab,
         sceneStyle: {
           backgroundColor: Colors[colorScheme ?? 'light'].background,
@@ -449,7 +429,7 @@ export default function TabLayout() {
         name="find"
         options={{
           href: null,
-          animation: 'fade',
+          animation: 'none',
         }}
       />
 
@@ -486,7 +466,7 @@ export default function TabLayout() {
         name="activity"
         options={{
           href: null,
-          animation: 'fade',
+          animation: 'none',
         }}
       />
 
@@ -508,7 +488,7 @@ export default function TabLayout() {
         name="create"
         options={{
           href: null,
-          animation: 'shift',
+          animation: 'none',
         }}
       />
     </Tabs>
