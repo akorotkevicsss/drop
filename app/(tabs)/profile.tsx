@@ -115,11 +115,17 @@ export default function ProfileScreen() {
 
       try {
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: {
+            session,
+          },
+        } =
+          await supabase.auth.getSession();
 
-        if (userError || !user) {
+        const user =
+          session?.user ??
+          null;
+
+        if (!user) {
           if (!hasVisibleData.current) {
             Alert.alert(
               'Profile error',

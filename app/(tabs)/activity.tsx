@@ -6,6 +6,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -25,6 +26,10 @@ import {
   DropTypography,
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import {
+  getScreenCache,
+  setScreenCache,
+} from '@/lib/tab-screen-cache';
 
 type NotificationType =
   | 'like'
@@ -53,15 +58,28 @@ type NotificationRow = {
   requires_reconfirmation: boolean;
 };
 
+type ActivityCache = {
+  notifications: NotificationRow[];
+  currentUserId: string | null;
+};
+
+const CACHE_KEY =
+  'tab:activity';
+
 function formatActivityTime(
   dateString: string
 ) {
-  const date = new Date(dateString);
+  const date =
+    new Date(dateString);
+
   const difference =
-    Date.now() - date.getTime();
+    Date.now() -
+    date.getTime();
 
   const minutes =
-    Math.floor(difference / 60000);
+    Math.floor(
+      difference / 60000
+    );
 
   if (minutes < 1) {
     return 'now';
@@ -72,14 +90,18 @@ function formatActivityTime(
   }
 
   const hours =
-    Math.floor(minutes / 60);
+    Math.floor(
+      minutes / 60
+    );
 
   if (hours < 24) {
     return `${hours}h`;
   }
 
   const days =
-    Math.floor(hours / 24);
+    Math.floor(
+      hours / 24
+    );
 
   if (days < 7) {
     return `${days}d`;
@@ -119,24 +141,66 @@ function getActionText(
 }
 
 export default function ActivityScreen() {
+  const cached =
+    getScreenCache<ActivityCache>(
+      CACHE_KEY
+    );
+
   const [
     notifications,
     setNotifications,
   ] = useState<
     NotificationRow[]
-  >([]);
+  >(
+    cached?.notifications ??
+      []
+  );
 
   const [
     currentUserId,
     setCurrentUserId,
   ] = useState<
     string | null
-  >(null);
+  >(
+    cached?.currentUserId ??
+      null
+  );
 
   const [
     loading,
     setLoading,
-  ] = useState(true);
+  ] = useState(
+    !cached
+  );
+
+  const requestInFlight =
+    useRef(false);
+
+  const hasVisibleDataRef =
+    useRef(
+      !!cached
+    );
+
+  const saveCache =
+    useCallback(
+      (
+        nextNotifications:
+          NotificationRow[],
+        userId:
+          string | null
+      ) => {
+        setScreenCache<ActivityCache>(
+          CACHE_KEY,
+          {
+            notifications:
+              nextNotifications,
+            currentUserId:
+              userId,
+          }
+        );
+      },
+      []
+    );
 
   const markAllRead =
     useCallback(
@@ -175,31 +239,48 @@ export default function ActivityScreen() {
 
   const loadNotifications =
     useCallback(
-      async () => {
-        try {
-          setLoading(true);
+      async (
+        showLoader = false
+      ) => {
+        if (
+          requestInFlight.current
+        ) {
+          return;
+        }
 
+        requestInFlight.current =
+          true;
+
+        if (
+          showLoader &&
+          !hasVisibleDataRef.current
+        ) {
+          setLoading(true);
+        }
+
+        try {
           const {
             data: {
-              user,
+              session,
             },
-            error:
-              userError,
           } =
-            await supabase.auth.getUser();
+            await supabase.auth.getSession();
 
-          if (
-            userError ||
-            !user
-          ) {
+          const user =
+            session?.user ??
+            null;
+
+          if (!user) {
             setCurrentUserId(
               null
             );
-
             setNotifications(
               []
             );
-
+            saveCache(
+              [],
+              null
+            );
             return;
           }
 
@@ -237,10 +318,14 @@ export default function ActivityScreen() {
               error
             );
 
-            Alert.alert(
-              'Error',
-              'Could not load Activity.'
-            );
+            if (
+              !hasVisibleDataRef.current
+            ) {
+              Alert.alert(
+                'Error',
+                'Could not load Activity.'
+              );
+            }
 
             return;
           }
@@ -264,70 +349,93 @@ export default function ActivityScreen() {
             ),
           ];
 
-          let profiles: {
-            id: string;
-            username:
-              | string
-              | null;
-            display_name:
-              | string
-              | null;
-            avatar_url:
-              | string
-              | null;
-          }[] = [];
+          const rescheduledDropIds =
+            [
+              ...new Set(
+                raw
+                  .filter(
+                    (item) =>
+                      item.type ===
+                        'drop_rescheduled' &&
+                      !!item.drop_id
+                  )
+                  .map(
+                    (item) =>
+                      item.drop_id as string
+                  )
+              ),
+            ];
 
-          if (
+          const [
+            profilesResult,
+            reconfirmationResult,
+          ] = await Promise.all([
             actorIds.length >
             0
-          ) {
-            const {
-              data:
-                profileData,
-              error:
-                profileError,
-            } =
-              await supabase
-                .from(
-                  'profiles'
-                )
-                .select(
-                  'id,username,display_name,avatar_url'
-                )
-                .in(
-                  'id',
-                  actorIds
-                );
+              ? supabase
+                  .from(
+                    'profiles'
+                  )
+                  .select(
+                    'id,username,display_name,avatar_url'
+                  )
+                  .in(
+                    'id',
+                    actorIds
+                  )
+              : Promise.resolve({
+                  data: [],
+                  error: null,
+                }),
 
-            if (
-              profileError
-            ) {
-              console.error(
-                'ACTIVITY PROFILES ERROR:',
-                profileError
-              );
-            } else {
-              profiles =
-                profileData ??
-                [];
-            }
+            rescheduledDropIds.length >
+            0
+              ? supabase
+                  .from(
+                    'join_requests'
+                  )
+                  .select(
+                    'drop_id,reconfirmation_required,status'
+                  )
+                  .eq(
+                    'user_id',
+                    user.id
+                  )
+                  .eq(
+                    'status',
+                    'accepted'
+                  )
+                  .in(
+                    'drop_id',
+                    rescheduledDropIds
+                  )
+              : Promise.resolve({
+                  data: [],
+                  error: null,
+                }),
+          ]);
+
+          if (
+            profilesResult.error
+          ) {
+            console.error(
+              'ACTIVITY PROFILES ERROR:',
+              profilesResult.error
+            );
           }
 
-          const rescheduledDropIds = [
-            ...new Set(
-              raw
-                .filter(
-                  (item) =>
-                    item.type ===
-                      'drop_rescheduled' &&
-                    !!item.drop_id
-                )
-                .map(
-                  (item) =>
-                    item.drop_id as string
-                )
-            ),
-          ];
+          if (
+            reconfirmationResult.error
+          ) {
+            console.warn(
+              'ACTIVITY RECONFIRMATION LOAD ERROR:',
+              reconfirmationResult.error
+            );
+          }
+
+          const profiles =
+            profilesResult.data ??
+            [];
 
           const reconfirmationByDrop =
             new Map<
@@ -335,58 +443,18 @@ export default function ActivityScreen() {
               boolean
             >();
 
-          if (
-            rescheduledDropIds.length >
-            0
-          ) {
-            const {
-              data:
-                reconfirmationRows,
-              error:
-                reconfirmationError,
-            } =
-              await supabase
-                .from(
-                  'join_requests'
-                )
-                .select(
-                  'drop_id,reconfirmation_required,status'
-                )
-                .eq(
-                  'user_id',
-                  user.id
-                )
-                .eq(
-                  'status',
-                  'accepted'
-                )
-                .in(
-                  'drop_id',
-                  rescheduledDropIds
-                );
-
-            if (
-              reconfirmationError
-            ) {
-              console.warn(
-                'ACTIVITY RECONFIRMATION LOAD ERROR:',
-                reconfirmationError
-              );
-            } else {
-              (
-                reconfirmationRows ??
-                []
-              ).forEach(
-                (row) => {
-                  reconfirmationByDrop.set(
-                    row.drop_id,
-                    row.reconfirmation_required ===
-                      true
-                  );
-                }
+          (
+            reconfirmationResult.data ??
+            []
+          ).forEach(
+            (row) => {
+              reconfirmationByDrop.set(
+                row.drop_id,
+                row.reconfirmation_required ===
+                  true
               );
             }
-          }
+          );
 
           const combined =
             raw.map(
@@ -427,24 +495,35 @@ export default function ActivityScreen() {
             combined
           );
 
-          await markAllRead(
+          hasVisibleDataRef.current =
+            true;
+
+          saveCache(
+            combined,
+            user.id
+          );
+
+          void markAllRead(
             user.id
           );
         } finally {
-          setLoading(
-            false
-          );
+          requestInFlight.current =
+            false;
+          setLoading(false);
         }
       },
       [
         markAllRead,
+        saveCache,
       ]
     );
 
   useFocusEffect(
     useCallback(
       () => {
-        loadNotifications();
+        void loadNotifications(
+          !hasVisibleDataRef.current
+        );
       },
       [
         loadNotifications,
@@ -453,9 +532,7 @@ export default function ActivityScreen() {
   );
 
   useEffect(() => {
-    if (
-      !currentUserId
-    ) {
+    if (!currentUserId) {
       return;
     }
 
@@ -476,7 +553,9 @@ export default function ActivityScreen() {
               `user_id=eq.${currentUserId}`,
           },
           () => {
-            loadNotifications();
+            loadNotifications(
+              false
+            );
           }
         )
         .subscribe();
@@ -495,9 +574,7 @@ export default function ActivityScreen() {
     async (
       actorId: string
     ) => {
-      if (
-        !currentUserId
-      ) {
+      if (!currentUserId) {
         return null;
       }
 
@@ -528,6 +605,37 @@ export default function ActivityScreen() {
       return (
         data?.id ??
         null
+      );
+    };
+
+  const updateReconfirmation =
+    (
+      dropId: string
+    ) => {
+      setNotifications(
+        (current) => {
+          const next =
+            current.map(
+              (item) =>
+                item.drop_id ===
+                  dropId &&
+                item.type ===
+                  'drop_rescheduled'
+                  ? {
+                      ...item,
+                      requires_reconfirmation:
+                        false,
+                    }
+                  : item
+            );
+
+          saveCache(
+            next,
+            currentUserId
+          );
+
+          return next;
+        }
       );
     };
 
@@ -562,21 +670,8 @@ export default function ActivityScreen() {
         return;
       }
 
-      setNotifications(
-        (current) =>
-          current.map(
-            (item) =>
-              item.drop_id ===
-                notification.drop_id &&
-              item.type ===
-                'drop_rescheduled'
-                ? {
-                    ...item,
-                    requires_reconfirmation:
-                      false,
-                  }
-                : item
-          )
+      updateReconfirmation(
+        notification.drop_id
       );
     };
 
@@ -611,21 +706,8 @@ export default function ActivityScreen() {
         return;
       }
 
-      setNotifications(
-        (current) =>
-          current.map(
-            (item) =>
-              item.drop_id ===
-                notification.drop_id &&
-              item.type ===
-                'drop_rescheduled'
-                ? {
-                    ...item,
-                    requires_reconfirmation:
-                      false,
-                  }
-                : item
-          )
+      updateReconfirmation(
+        notification.drop_id
       );
     };
 
@@ -675,7 +757,6 @@ export default function ActivityScreen() {
         router.push(
           '/profile'
         );
-
         return;
       }
 
@@ -685,7 +766,6 @@ export default function ActivityScreen() {
         router.push(
           `/chat/${notification.conversation_id}`
         );
-
         return;
       }
 
@@ -697,13 +777,10 @@ export default function ActivityScreen() {
             notification.actor_id
           );
 
-        if (
-          conversationId
-        ) {
+        if (conversationId) {
           router.push(
             `/chat/${conversationId}`
           );
-
           return;
         }
       }
@@ -714,7 +791,11 @@ export default function ActivityScreen() {
       );
     };
 
-  if (loading) {
+  if (
+    loading &&
+    notifications.length ===
+      0
+  ) {
     return (
       <View
         style={
@@ -837,9 +918,7 @@ export default function ActivityScreen() {
                   key={
                     notification.id
                   }
-                  style={({
-                    pressed,
-                  }) => [
+                  style={({ pressed }) => [
                     styles.notification,
                     !notification.read_at &&
                       styles.notificationUnread,
@@ -858,9 +937,7 @@ export default function ActivityScreen() {
                         .actor
                         ?.avatar_url
                     }
-                    name={
-                      actorName
-                    }
+                    name={actorName}
                     size={42}
                   />
 
@@ -879,9 +956,7 @@ export default function ActivityScreen() {
                           styles.actorName
                         }
                       >
-                        {
-                          actorName
-                        }
+                        {actorName}
                       </Text>{' '}
                       {action}
                     </Text>
@@ -913,69 +988,62 @@ export default function ActivityScreen() {
                         notification.created_at
                       )}
                     </Text>
+
                     {notification.type ===
                       'drop_rescheduled' &&
                       notification.requires_reconfirmation && (
-                      <View
-                        style={
-                          styles.reconfirmActions
-                        }
-                      >
-                        <Pressable
-                          style={({
-                            pressed,
-                          }) => [
-                            styles.reconfirmButton,
-                            styles.reconfirmPrimary,
-                            pressed &&
-                              styles.reconfirmPressed,
-                          ]}
-                          onPress={(
-                            event
-                          ) => {
-                            event.stopPropagation();
-                            confirmRescheduledDrop(
-                              notification
-                            );
-                          }}
+                        <View
+                          style={
+                            styles.reconfirmActions
+                          }
                         >
-                          <Text
-                            style={
-                              styles.reconfirmPrimaryText
-                            }
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.reconfirmButton,
+                              styles.reconfirmPrimary,
+                              pressed &&
+                                styles.reconfirmPressed,
+                            ]}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              confirmRescheduledDrop(
+                                notification
+                              );
+                            }}
                           >
-                            Confirm
-                          </Text>
-                        </Pressable>
+                            <Text
+                              style={
+                                styles.reconfirmPrimaryText
+                              }
+                            >
+                              Confirm
+                            </Text>
+                          </Pressable>
 
-                        <Pressable
-                          style={({
-                            pressed,
-                          }) => [
-                            styles.reconfirmButton,
-                            styles.reconfirmSecondary,
-                            pressed &&
-                              styles.reconfirmPressed,
-                          ]}
-                          onPress={(
-                            event
-                          ) => {
-                            event.stopPropagation();
-                            leaveRescheduledDrop(
-                              notification
-                            );
-                          }}
-                        >
-                          <Text
-                            style={
-                              styles.reconfirmSecondaryText
-                            }
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.reconfirmButton,
+                              styles.reconfirmSecondary,
+                              pressed &&
+                                styles.reconfirmPressed,
+                            ]}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              leaveRescheduledDrop(
+                                notification
+                              );
+                            }}
                           >
-                            Can't go
-                          </Text>
-                        </Pressable>
-                      </View>
-                    )}
+                            <Text
+                              style={
+                                styles.reconfirmSecondaryText
+                              }
+                            >
+                              Can't go
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
                   </View>
 
                   {!notification.read_at && (
@@ -1163,7 +1231,8 @@ const styles =
     },
 
     reconfirmActions: {
-      flexDirection: 'row',
+      flexDirection:
+        'row',
       marginTop: 10,
       gap: 8,
     },
@@ -1172,8 +1241,10 @@ const styles =
       minHeight: 34,
       paddingHorizontal: 14,
       borderRadius: 17,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
     },
 
     reconfirmPrimary: {

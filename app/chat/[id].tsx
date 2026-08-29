@@ -10,6 +10,7 @@ import {
 } from 'expo-audio';
 import * as Clipboard from 'expo-clipboard';
 import { File } from 'expo-file-system';
+import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Stack,
@@ -55,6 +56,7 @@ import {
   DropTypography,
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { getScreenCache, patchScreenCache } from '@/lib/tab-screen-cache';
 
 type Conversation = {
   id: string;
@@ -865,6 +867,17 @@ function SwipeMessage({
   );
 }
 
+
+type ChatCache = {
+  conversation: Conversation | null;
+  currentUserId: string | null;
+  profiles: Profile[];
+  messages: Message[];
+  events: ConversationEvent[];
+  hiddenMessageIds: string[];
+  imageAspectRatios: Record<string, number>;
+};
+
 export default function ChatScreen() {
   const {
     id,
@@ -872,6 +885,21 @@ export default function ChatScreen() {
     useLocalSearchParams<{
       id: string;
     }>();
+
+  const cacheKey =
+    id
+      ? `chat:${id}`
+      : '';
+
+  const cached =
+    cacheKey
+      ? getScreenCache<ChatCache>(
+          cacheKey
+        )
+      : null;
+
+  const loadChatInFlightRef =
+    useRef(false);
 
   const scrollRef =
     useRef<ScrollView>(
@@ -889,7 +917,7 @@ export default function ChatScreen() {
     setConversation,
   ] =
     useState<Conversation | null>(
-      null
+      cached?.conversation ?? null
     );
 
   const [
@@ -898,7 +926,9 @@ export default function ChatScreen() {
   ] =
     useState<
       string | null
-    >(null);
+    >(
+      cached?.currentUserId ?? null
+    );
 
   const [
     profiles,
@@ -906,7 +936,9 @@ export default function ChatScreen() {
   ] =
     useState<
       Profile[]
-    >([]);
+    >(
+      cached?.profiles ?? []
+    );
 
   const [
     messages,
@@ -914,7 +946,9 @@ export default function ChatScreen() {
   ] =
     useState<
       Message[]
-    >([]);
+    >(
+      cached?.messages ?? []
+    );
 
   const [
     events,
@@ -922,7 +956,9 @@ export default function ChatScreen() {
   ] =
     useState<
       ConversationEvent[]
-    >([]);
+    >(
+      cached?.events ?? []
+    );
 
   const [
     hiddenMessageIds,
@@ -931,7 +967,9 @@ export default function ChatScreen() {
     useState<
       Set<string>
     >(
-      new Set()
+      new Set(
+        cached?.hiddenMessageIds ?? []
+      )
     );
 
   const [
@@ -970,7 +1008,7 @@ export default function ChatScreen() {
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(!cached);
 
   const [
     sending,
@@ -1093,7 +1131,67 @@ export default function ChatScreen() {
         string,
         number
       >
-    >({});
+    >(
+      cached?.imageAspectRatios ?? {}
+    );
+
+  useEffect(
+    () => {
+      if (!id) {
+        return;
+      }
+
+      patchScreenCache<ChatCache>(
+        `chat:${id}`,
+        {
+          imageAspectRatios,
+        }
+      );
+    },
+    [
+      id,
+      imageAspectRatios,
+    ]
+  );
+
+
+  useEffect(
+    () => {
+      const imageUrls =
+        messages
+          .filter(
+            (message) =>
+              message.message_type ===
+                'image' &&
+              !!message.media_path &&
+              !message.deleted_for_everyone_at
+          )
+          .slice(-16)
+          .map(
+            (message) =>
+              supabase.storage
+                .from(
+                  'message-images'
+                )
+                .getPublicUrl(
+                  message.media_path as string
+                ).data.publicUrl
+          );
+
+      if (
+        imageUrls.length >
+        0
+      ) {
+        void ExpoImage.prefetch(
+          imageUrls,
+          'memory-disk'
+        );
+      }
+    },
+    [
+      messages,
+    ]
+  );
 
   const messageBubbleRefs =
     useRef<
@@ -1583,28 +1681,40 @@ export default function ChatScreen() {
 
   const loadChat =
     async () => {
-      if (!id) {
+      if (
+        !id ||
+        loadChatInFlightRef.current
+      ) {
         return;
       }
 
-      try {
+      loadChatInFlightRef.current =
+        true;
+
+      const existingCache =
+        getScreenCache<ChatCache>(
+          `chat:${id}`
+        );
+
+      if (!existingCache) {
         setLoading(
           true
         );
+      }
 
+      try {
         const {
           data: {
-            user,
+            session,
           },
-          error:
-            userError,
         } =
-          await supabase.auth.getUser();
+          await supabase.auth.getSession();
 
-        if (
-          userError ||
-          !user
-        ) {
+        const user =
+          session?.user ??
+          null;
+
+        if (!user) {
           return;
         }
 
@@ -1612,13 +1722,21 @@ export default function ChatScreen() {
           user.id
         );
 
-        const {
-          data:
-            conversationData,
-          error:
-            conversationError,
-        } =
-          await supabase
+        patchScreenCache<ChatCache>(
+          `chat:${id}`,
+          {
+            currentUserId:
+              user.id,
+          }
+        );
+
+        /*
+         * Do not build the chat sequentially.
+         * Conversation, membership, messages, events and hidden-message state
+         * can all start at the same time because we already know the id.
+         */
+        const conversationPromise =
+          supabase
             .from(
               'conversations'
             )
@@ -1634,6 +1752,61 @@ export default function ChatScreen() {
               id
             )
             .maybeSingle();
+
+        const membersPromise =
+          supabase
+            .from(
+              'conversation_members'
+            )
+            .select(
+              'user_id'
+            )
+            .eq(
+              'conversation_id',
+              id
+            )
+            .is(
+              'left_at',
+              null
+            );
+
+        const chatDataPromise =
+          Promise.all([
+            loadMessages(
+              id
+            ),
+            loadEvents(
+              id
+            ),
+            loadHiddenMessages(
+              user.id
+            ),
+            markConversationRead(
+              id,
+              user.id
+            ),
+            markConversationNotificationsRead(
+              id,
+              user.id
+            ),
+          ]);
+
+        const [
+          conversationResult,
+          membersResult,
+        ] =
+          await Promise.all([
+            conversationPromise,
+            membersPromise,
+          ]);
+
+        const {
+          data:
+            conversationData,
+          error:
+            conversationError,
+        } =
+          conversationResult;
 
         if (
           conversationError ||
@@ -1652,21 +1825,7 @@ export default function ChatScreen() {
           error:
             memberError,
         } =
-          await supabase
-            .from(
-              'conversation_members'
-            )
-            .select(
-              'user_id'
-            )
-            .eq(
-              'conversation_id',
-              conversationData.id
-            )
-            .is(
-              'left_at',
-              null
-            );
+          membersResult;
 
         if (
           memberError
@@ -1702,8 +1861,19 @@ export default function ChatScreen() {
           return;
         }
 
+        const nextConversation =
+          conversationData as Conversation;
+
         setConversation(
-          conversationData as Conversation
+          nextConversation
+        );
+
+        patchScreenCache<ChatCache>(
+          `chat:${id}`,
+          {
+            conversation:
+              nextConversation,
+          }
         );
 
         const memberIds =
@@ -1745,35 +1915,40 @@ export default function ChatScreen() {
               profileError
             );
           } else {
-            setProfiles(
+            const nextProfiles =
               (
                 profileData ??
                 []
-              ) as Profile[]
+              ) as Profile[];
+
+            setProfiles(
+              nextProfiles
+            );
+
+            patchScreenCache<ChatCache>(
+              `chat:${id}`,
+              {
+                profiles:
+                  nextProfiles,
+              }
             );
           }
         }
 
-        await Promise.all([
-          loadMessages(
-            conversationData.id
-          ),
-          loadEvents(
-            conversationData.id
-          ),
-          loadHiddenMessages(
-            user.id
-          ),
-          markConversationRead(
-            conversationData.id,
-            user.id
-          ),
-          markConversationNotificationsRead(
-            conversationData.id,
-            user.id
-          ),
-        ]);
+        /*
+         * Header + membership are enough to render the screen.
+         * Messages/events continue resolving without keeping a first-open
+         * fullscreen spinner on screen.
+         */
+        setLoading(
+          false
+        );
+
+        await chatDataPromise;
       } finally {
+        loadChatInFlightRef.current =
+          false;
+
         setLoading(
           false
         );
@@ -1833,6 +2008,26 @@ export default function ChatScreen() {
           []
         ) as Message[];
 
+      /*
+       * Render text/history immediately.
+       * Image.getSize used to block the entire initial chat load until every
+       * remote image had reported its dimensions. In a group chat this could
+       * add several seconds.
+       */
+      setMessages(
+        loadedMessages
+      );
+
+      if (id) {
+        patchScreenCache<ChatCache>(
+          `chat:${id}`,
+          {
+            messages:
+              loadedMessages,
+          }
+        );
+      }
+
       const imageMessages =
         loadedMessages.filter(
           (message) =>
@@ -1841,49 +2036,100 @@ export default function ChatScreen() {
             !message.deleted_for_everyone_at
         );
 
-      if (imageMessages.length > 0) {
-        const measuredRatios =
-          await Promise.all(
-            imageMessages.map(
-              async (message) => {
-                const mediaUrl = supabase.storage
-                  .from('message-images')
-                  .getPublicUrl(message.media_path as string)
+      if (
+        imageMessages.length >
+        0
+      ) {
+        void Promise.all(
+          imageMessages.map(
+            async (
+              message
+            ) => {
+              const mediaUrl =
+                supabase.storage
+                  .from(
+                    'message-images'
+                  )
+                  .getPublicUrl(
+                    message.media_path as string
+                  )
                   .data.publicUrl;
 
-                return await new Promise<[string, number] | null>(
-                  (resolve) => {
-                    Image.getSize(
-                      mediaUrl,
-                      (width, height) => {
-                        resolve(
-                          width > 0 && height > 0
-                            ? [message.id, width / height]
-                            : null
-                        );
-                      },
-                      () => resolve(null)
-                    );
+              return await new Promise<
+                [string, number] | null
+              >(
+                (
+                  resolve
+                ) => {
+                  Image.getSize(
+                    mediaUrl,
+                    (
+                      width,
+                      height
+                    ) => {
+                      resolve(
+                        width > 0 &&
+                        height > 0
+                          ? [
+                              message.id,
+                              width /
+                                height,
+                            ]
+                          : null
+                      );
+                    },
+                    () =>
+                      resolve(
+                        null
+                      )
+                  );
+                }
+              );
+            }
+          )
+        ).then(
+          (
+            measuredRatios
+          ) => {
+            setImageAspectRatios(
+              (
+                current
+              ) => {
+                const next = {
+                  ...current,
+                };
+
+                measuredRatios.forEach(
+                  (
+                    entry
+                  ) => {
+                    if (
+                      entry
+                    ) {
+                      next[
+                        entry[0]
+                      ] =
+                        entry[1];
+                    }
                   }
                 );
+
+                if (id) {
+                  patchScreenCache<ChatCache>(
+                    `chat:${id}`,
+                    {
+                      imageAspectRatios:
+                        next,
+                    }
+                  );
+                }
+
+                return next;
               }
-            )
-          );
-
-        setImageAspectRatios((current) => {
-          const next = { ...current };
-
-          measuredRatios.forEach((entry) => {
-            if (entry) {
-              next[entry[0]] = entry[1];
-            }
-          });
-
-          return next;
-        });
+            );
+          }
+        );
       }
-
-      setMessages(loadedMessages);
     };
 
   const loadEvents =
@@ -1929,12 +2175,25 @@ export default function ChatScreen() {
         return;
       }
 
-      setEvents(
+      const nextEvents =
         (
           data ??
           []
-        ) as ConversationEvent[]
+        ) as ConversationEvent[];
+
+      setEvents(
+        nextEvents
       );
+
+      if (id) {
+        patchScreenCache<ChatCache>(
+          `chat:${id}`,
+          {
+            events:
+              nextEvents,
+          }
+        );
+      }
     };
 
   const loadHiddenMessages =
@@ -1967,17 +2226,30 @@ export default function ChatScreen() {
         return;
       }
 
+      const nextHiddenIds =
+        (
+          data ??
+          []
+        ).map(
+          (row) =>
+            row.message_id
+        );
+
       setHiddenMessageIds(
         new Set(
-          (
-            data ??
-            []
-          ).map(
-            (row) =>
-              row.message_id
-          )
+          nextHiddenIds
         )
       );
+
+      if (id) {
+        patchScreenCache<ChatCache>(
+          `chat:${id}`,
+          {
+            hiddenMessageIds:
+              nextHiddenIds,
+          }
+        );
+      }
     };
 
       const markConversationRead =
@@ -3217,7 +3489,8 @@ export default function ChatScreen() {
     };
 
   if (
-    loading
+    loading &&
+    !conversation
   ) {
     return (
       <View
@@ -3987,7 +4260,7 @@ export default function ChatScreen() {
                           }}
                           delayLongPress={260}
                         >
-                          <Image
+                          <ExpoImage
                             source={{
                               uri:
                                 mediaUrl,
@@ -4002,7 +4275,12 @@ export default function ChatScreen() {
                                   1,
                               },
                             ]}
-                            resizeMode="contain"
+                            contentFit="contain"
+                            cachePolicy="memory-disk"
+                            transition={0}
+                            recyclingKey={
+                              message.id
+                            }
                             onLoad={(event) => {
                               const {
                                 width,
@@ -4833,7 +5111,7 @@ export default function ChatScreen() {
                 event.stopPropagation();
               }}
             >
-              <Image
+              <ExpoImage
                 source={{
                   uri:
                     photoViewerUrl,
@@ -4841,7 +5119,9 @@ export default function ChatScreen() {
                 style={
                   styles.photoViewerImage
                 }
-                resizeMode="contain"
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={0}
               />
             </Pressable>
           )}
