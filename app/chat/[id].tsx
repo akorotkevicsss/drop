@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   AudioModule,
   RecordingPresets,
@@ -57,6 +58,104 @@ import {
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { getScreenCache, patchScreenCache } from '@/lib/tab-screen-cache';
+
+const imageRatioStorageKey =
+  (
+    conversationId: string
+  ) =>
+    `chat-image-ratios:${conversationId}`;
+
+async function readPersistedImageRatios(
+  conversationId: string
+): Promise<
+  Record<string, number>
+> {
+  try {
+    const raw =
+      await AsyncStorage.getItem(
+        imageRatioStorageKey(
+          conversationId
+        )
+      );
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed =
+      JSON.parse(
+        raw
+      ) as Record<
+        string,
+        unknown
+      >;
+
+    const result:
+      Record<string, number> =
+      {};
+
+    Object.entries(
+      parsed
+    ).forEach(
+      ([
+        key,
+        value,
+      ]) => {
+        if (
+          typeof value ===
+            'number' &&
+          Number.isFinite(
+            value
+          ) &&
+          value >
+            0
+        ) {
+          result[
+            key
+          ] =
+            value;
+        }
+      }
+    );
+
+    return result;
+  } catch (
+    error
+  ) {
+    console.warn(
+      'CHAT IMAGE RATIO CACHE READ ERROR:',
+      error
+    );
+
+    return {};
+  }
+}
+
+async function writePersistedImageRatios(
+  conversationId: string,
+  ratios: Record<
+    string,
+    number
+  >
+) {
+  try {
+    await AsyncStorage.setItem(
+      imageRatioStorageKey(
+        conversationId
+      ),
+      JSON.stringify(
+        ratios
+      )
+    );
+  } catch (
+    error
+  ) {
+    console.warn(
+      'CHAT IMAGE RATIO CACHE WRITE ERROR:',
+      error
+    );
+  }
+}
 
 type Conversation = {
   id: string;
@@ -1157,6 +1256,65 @@ export default function ChatScreen() {
 
   useEffect(
     () => {
+      if (!id) {
+        return;
+      }
+
+      let active =
+        true;
+
+      void readPersistedImageRatios(
+        id
+      ).then(
+        (
+          persisted
+        ) => {
+          if (
+            !active ||
+            Object.keys(
+              persisted
+            ).length ===
+              0
+          ) {
+            return;
+          }
+
+          setImageAspectRatios(
+            (
+              current
+            ) => {
+              const next = {
+                ...persisted,
+                ...current,
+              };
+
+              patchScreenCache<ChatCache>(
+                `chat:${id}`,
+                {
+                  imageAspectRatios:
+                    next,
+                }
+              );
+
+              return next;
+            }
+          );
+        }
+      );
+
+      return () => {
+        active =
+          false;
+      };
+    },
+    [
+      id,
+    ]
+  );
+
+
+  useEffect(
+    () => {
       const imageUrls =
         messages
           .filter(
@@ -1191,6 +1349,134 @@ export default function ChatScreen() {
     [
       messages,
     ]
+  );
+
+  const pendingImageRatiosRef =
+    useRef<
+      Record<
+        string,
+        number
+      >
+    >({});
+
+  const imageRatioFlushTimerRef =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  const queueImageAspectRatio =
+    (
+      messageId: string,
+      ratio: number
+    ) => {
+      pendingImageRatiosRef.current[
+        messageId
+      ] = ratio;
+
+      if (
+        imageRatioFlushTimerRef.current
+      ) {
+        return;
+      }
+
+      imageRatioFlushTimerRef.current =
+        setTimeout(
+          () => {
+            imageRatioFlushTimerRef.current =
+              null;
+
+            const pending = {
+              ...pendingImageRatiosRef.current,
+            };
+
+            pendingImageRatiosRef.current =
+              {};
+
+            setImageAspectRatios(
+              (
+                current
+              ) => {
+                let changed =
+                  false;
+
+                const next = {
+                  ...current,
+                };
+
+                Object.entries(
+                  pending
+                ).forEach(
+                  ([
+                    key,
+                    nextRatio,
+                  ]) => {
+                    const currentRatio =
+                      current[
+                        key
+                      ];
+
+                    if (
+                      currentRatio &&
+                      Math.abs(
+                        currentRatio -
+                          nextRatio
+                      ) <
+                        0.001
+                    ) {
+                      return;
+                    }
+
+                    next[
+                      key
+                    ] =
+                      nextRatio;
+                    changed =
+                      true;
+                  }
+                );
+
+                if (
+                  !changed
+                ) {
+                  return current;
+                }
+
+                if (id) {
+                  patchScreenCache<ChatCache>(
+                    `chat:${id}`,
+                    {
+                      imageAspectRatios:
+                        next,
+                    }
+                  );
+
+                  void writePersistedImageRatios(
+                    id,
+                    next
+                  );
+                }
+
+                return next;
+              }
+            );
+          },
+          24
+        );
+    };
+
+  useEffect(
+    () => {
+      return () => {
+        if (
+          imageRatioFlushTimerRef.current
+        ) {
+          clearTimeout(
+            imageRatioFlushTimerRef.current
+          );
+        }
+      };
+    },
+    []
   );
 
   const messageBubbleRefs =
@@ -1809,13 +2095,18 @@ export default function ChatScreen() {
           conversationResult;
 
         if (
-          conversationError ||
-          !conversationData
+          conversationError
         ) {
-          console.error(
-            'LOAD CHAT CONVERSATION ERROR:',
+          console.warn(
+            'LOAD CHAT CONVERSATION WARNING:',
             conversationError
           );
+          return;
+        }
+
+        if (
+          !conversationData
+        ) {
           return;
         }
 
@@ -2028,108 +2319,14 @@ export default function ChatScreen() {
         );
       }
 
-      const imageMessages =
-        loadedMessages.filter(
-          (message) =>
-            message.message_type === 'image' &&
-            !!message.media_path &&
-            !message.deleted_for_everyone_at
-        );
-
-      if (
-        imageMessages.length >
-        0
-      ) {
-        void Promise.all(
-          imageMessages.map(
-            async (
-              message
-            ) => {
-              const mediaUrl =
-                supabase.storage
-                  .from(
-                    'message-images'
-                  )
-                  .getPublicUrl(
-                    message.media_path as string
-                  )
-                  .data.publicUrl;
-
-              return await new Promise<
-                [string, number] | null
-              >(
-                (
-                  resolve
-                ) => {
-                  Image.getSize(
-                    mediaUrl,
-                    (
-                      width,
-                      height
-                    ) => {
-                      resolve(
-                        width > 0 &&
-                        height > 0
-                          ? [
-                              message.id,
-                              width /
-                                height,
-                            ]
-                          : null
-                      );
-                    },
-                    () =>
-                      resolve(
-                        null
-                      )
-                  );
-                }
-              );
-            }
-          )
-        ).then(
-          (
-            measuredRatios
-          ) => {
-            setImageAspectRatios(
-              (
-                current
-              ) => {
-                const next = {
-                  ...current,
-                };
-
-                measuredRatios.forEach(
-                  (
-                    entry
-                  ) => {
-                    if (
-                      entry
-                    ) {
-                      next[
-                        entry[0]
-                      ] =
-                        entry[1];
-                    }
-                  }
-                );
-
-                if (id) {
-                  patchScreenCache<ChatCache>(
-                    `chat:${id}`,
-                    {
-                      imageAspectRatios:
-                        next,
-                    }
-                  );
-                }
-
-                return next;
-              }
-            );
-          }
-        );
-      }
+      /*
+       * Do not probe remote image dimensions here.
+       *
+       * React Native Image.getSize() performs its own remote request/cache
+       * path. With several photos in a group chat that means the same media
+       * can be requested once by getSize and again by expo-image.
+       * expo-image onLoad is now the single source of image dimensions.
+       */
     };
 
   const loadEvents =
@@ -4273,6 +4470,12 @@ export default function ChatScreen() {
                                     message.id
                                   ] ??
                                   1,
+                                opacity:
+                                  imageAspectRatios[
+                                    message.id
+                                  ]
+                                    ? 1
+                                    : 0,
                               },
                             ]}
                             contentFit="contain"
@@ -4294,15 +4497,10 @@ export default function ChatScreen() {
                                 height >
                                   0
                               ) {
-                                setImageAspectRatios(
-                                  (
-                                    current
-                                  ) => ({
-                                    ...current,
-                                    [message.id]:
-                                      width /
-                                      height,
-                                  })
+                                queueImageAspectRatio(
+                                  message.id,
+                                  width /
+                                    height
                                 );
                               }
                             }}
