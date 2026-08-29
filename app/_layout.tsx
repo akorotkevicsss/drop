@@ -29,6 +29,7 @@ import {
   supabase,
 } from '@/lib/supabase';
 
+
 export default function RootLayout() {
   const [
     fontsLoaded,
@@ -270,6 +271,14 @@ export default function RootLayout() {
         screenOptions={{
           headerShown:
             false,
+          animation:
+            'ios_from_right',
+          gestureEnabled:
+            true,
+          contentStyle: {
+            backgroundColor:
+              '#0B0B0B',
+          },
         }}
       >
         <Stack.Protected
@@ -343,6 +352,34 @@ export default function RootLayout() {
 
           <Stack.Screen
             name="requests"
+          />
+
+          <Stack.Screen
+            name="new-message"
+          />
+
+          <Stack.Screen
+            name="drop/[id]"
+          />
+
+          <Stack.Screen
+            name="drop/[id]/comments"
+          />
+
+          <Stack.Screen
+            name="drop/[id]/participants"
+          />
+
+          <Stack.Screen
+            name="drop/[id]/rates"
+          />
+
+          <Stack.Screen
+            name="drop/[id]/manage"
+          />
+
+          <Stack.Screen
+            name="drop/[id]/edit"
           />
         </Stack.Protected>
       </Stack>

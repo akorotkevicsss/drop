@@ -17,6 +17,11 @@ import { HeartIcon } from '@/components/icons/HeartIcon';
 import { UserAvatar } from '@/components/user-avatar';
 import { DropColors, DropTypography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import {
+  getCachedDropSnapshot,
+  patchDropSnapshot,
+  primeDropSnapshot,
+} from '@/store/drop-cache';
 
 type DropStatus = 'active' | 'ended' | 'cancelled';
 type JoinMode = 'request' | 'free' | 'invite_only';
@@ -81,16 +86,66 @@ function getStatusLabel(drop: DropRow) {
   return null;
 }
 
+function normalizeCachedDrop(
+  value: Record<string, unknown> | null | undefined
+): DropRow | null {
+  if (!value?.id || !value?.author_id || !value?.text) {
+    return null;
+  }
+
+  return {
+    id: String(value.id),
+    author_id: String(value.author_id),
+    text: String(value.text),
+    city: (value.city as string | null | undefined) ?? null,
+    event_time: (value.event_time as string | null | undefined) ?? null,
+    event_end_time: (value.event_end_time as string | null | undefined) ?? null,
+    location_text: (value.location_text as string | null | undefined) ?? null,
+    join_enabled: value.join_enabled === true,
+    join_until: (value.join_until as string | null | undefined) ?? null,
+    join_limit: (value.join_limit as number | null | undefined) ?? null,
+    join_mode: (value.join_mode as JoinMode | undefined) ?? 'request',
+    reply_enabled: value.reply_enabled === true,
+    comments_enabled: value.comments_enabled === true,
+    rating_enabled: value.rating_enabled === true,
+    age_restriction: (value.age_restriction as string | null | undefined) ?? null,
+    background_color: (value.background_color as string | null | undefined) ?? null,
+    image_path: (value.image_path as string | null | undefined) ?? null,
+    attached_image_path: (value.attached_image_path as string | null | undefined) ?? null,
+    attached_video_path: (value.attached_video_path as string | null | undefined) ?? null,
+    dress_code: (value.dress_code as string | null | undefined) ?? null,
+    conditions: (value.conditions as string | null | undefined) ?? null,
+    price_text: (value.price_text as string | null | undefined) ?? null,
+    language_text: (value.language_text as string | null | undefined) ?? null,
+    hashtags: (value.hashtags as string[] | null | undefined) ?? null,
+    status: (value.status as DropStatus | undefined) ?? 'active',
+    created_at: (value.created_at as string | undefined) ?? new Date().toISOString(),
+  };
+}
+
 export default function DropDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [drop, setDrop] = useState<DropRow | null>(null);
-  const [author, setAuthor] = useState<Profile | null>(null);
+  const cachedSnapshot = getCachedDropSnapshot(id);
+  const cachedDrop = normalizeCachedDrop(cachedSnapshot?.drop);
+
+  const [drop, setDrop] = useState<DropRow | null>(cachedDrop);
+  const [author, setAuthor] = useState<Profile | null>(
+    (cachedSnapshot?.author as Profile | null | undefined) ?? null
+  );
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [joinStatus, setJoinStatus] = useState<JoinStatus>('none');
-  const [participantCount, setParticipantCount] = useState(0);
-  const [likeCount, setLikeCount] = useState(0);
-  const [liked, setLiked] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [joinStatus, setJoinStatus] = useState<JoinStatus>(
+    cachedSnapshot?.joinStatus ?? 'none'
+  );
+  const [participantCount, setParticipantCount] = useState(
+    cachedSnapshot?.participantCount ?? 0
+  );
+  const [likeCount, setLikeCount] = useState(
+    cachedSnapshot?.likeCount ?? 0
+  );
+  const [liked, setLiked] = useState(
+    cachedSnapshot?.liked ?? false
+  );
+  const [loading, setLoading] = useState(!cachedDrop);
   const [actionLoading, setActionLoading] = useState(false);
   const [myRating, setMyRating] = useState<number | null>(null);
   const [ratingAverage, setRatingAverage] = useState<number | null>(null);
@@ -102,7 +157,10 @@ export default function DropDetailScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      setLoading(true);
+      if (!getCachedDropSnapshot(id)) {
+        setLoading(true);
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUserId(user?.id ?? null);
 
@@ -128,6 +186,11 @@ export default function DropDetailScreen() {
       const nextDrop = dropData as DropRow;
       setDrop(nextDrop);
 
+      primeDropSnapshot(nextDrop.id, {
+        drop: nextDrop as unknown as Record<string, unknown>,
+        author: cachedSnapshot?.author ?? null,
+      });
+
       const [{ data: profileData }, { count: likes }, { count: participants }] = await Promise.all([
         supabase
           .from('profiles')
@@ -145,9 +208,16 @@ export default function DropDetailScreen() {
           .eq('status', 'accepted'),
       ]);
 
-      setAuthor((profileData as Profile | null) ?? null);
+      const nextAuthor = (profileData as Profile | null) ?? null;
+      setAuthor(nextAuthor);
       setLikeCount(likes ?? 0);
       setParticipantCount(participants ?? 0);
+
+      patchDropSnapshot(nextDrop.id, {
+        author: nextAuthor,
+        likeCount: likes ?? 0,
+        participantCount: participants ?? 0,
+      });
 
       const { data: ratingSummary } =
         await supabase.rpc(
@@ -188,8 +258,16 @@ export default function DropDetailScreen() {
             .eq('user_id', user.id)
             .maybeSingle(),
         ]);
-        setJoinStatus((request?.status as JoinStatus | undefined) ?? 'none');
+        const nextJoinStatus =
+          (request?.status as JoinStatus | undefined) ?? 'none';
+
+        setJoinStatus(nextJoinStatus);
         setLiked(!!like);
+
+        patchDropSnapshot(nextDrop.id, {
+          joinStatus: nextJoinStatus,
+          liked: !!like,
+        });
 
         const {
           data: ownRating,
@@ -220,6 +298,11 @@ export default function DropDetailScreen() {
       } else {
         setJoinStatus('none');
         setLiked(false);
+
+        patchDropSnapshot(nextDrop.id, {
+          joinStatus: 'none',
+          liked: false,
+        });
       }
     } finally {
       setLoading(false);
@@ -251,12 +334,20 @@ export default function DropDetailScreen() {
         const { error } = await supabase.from('drop_likes').delete().eq('drop_id', drop.id).eq('user_id', currentUserId);
         if (error) throw error;
         setLiked(false);
-        setLikeCount((value) => Math.max(0, value - 1));
+        setLikeCount((value) => {
+          const nextValue = Math.max(0, value - 1);
+          patchDropSnapshot(drop.id, { liked: false, likeCount: nextValue });
+          return nextValue;
+        });
       } else {
         const { error } = await supabase.from('drop_likes').insert({ drop_id: drop.id, user_id: currentUserId });
         if (error) throw error;
         setLiked(true);
-        setLikeCount((value) => value + 1);
+        setLikeCount((value) => {
+          const nextValue = value + 1;
+          patchDropSnapshot(drop.id, { liked: true, likeCount: nextValue });
+          return nextValue;
+        });
       }
     } catch (error) {
       console.error('DROP LIKE ERROR:', error);
@@ -278,6 +369,7 @@ export default function DropDetailScreen() {
         const { error } = await supabase.from('join_requests').delete().eq('drop_id', drop.id).eq('user_id', currentUserId);
         if (error) throw error;
         setJoinStatus('none');
+        patchDropSnapshot(drop.id, { joinStatus: 'none' });
         return;
       }
       if (joinStatus === 'accepted') return;
@@ -292,7 +384,15 @@ export default function DropDetailScreen() {
       });
       if (error) throw error;
       setJoinStatus(nextStatus);
-      if (nextStatus === 'accepted') setParticipantCount((value) => value + 1);
+      patchDropSnapshot(drop.id, { joinStatus: nextStatus });
+
+      if (nextStatus === 'accepted') {
+        setParticipantCount((value) => {
+          const nextValue = value + 1;
+          patchDropSnapshot(drop.id, { participantCount: nextValue });
+          return nextValue;
+        });
+      }
     } catch (error) {
       console.error('DROP JOIN ERROR:', error);
       Alert.alert('Error', 'Could not update your participation.');

@@ -5,6 +5,7 @@ import {
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -38,6 +39,7 @@ import {
   DropTypography,
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { primeDropSnapshot } from '@/store/drop-cache';
 
 type DropAuthor = {
   username: string | null;
@@ -218,6 +220,8 @@ function formatJoinTimer(
 }
 
 export default function ExploreScreen() {
+  const hasLoadedOnce = useRef(false);
+
   const [
     mode,
     setMode,
@@ -402,22 +406,66 @@ export default function ExploreScreen() {
       false
     );
 
+  const openDrop = useCallback(
+    (drop: Drop) => {
+      primeDropSnapshot(drop.id, {
+        drop: drop as unknown as Record<string, unknown>,
+        author: drop.profiles
+          ? {
+              id: drop.author_id,
+              username: drop.profiles.username,
+              display_name: drop.profiles.display_name,
+              avatar_url: drop.profiles.avatar_url,
+            }
+          : null,
+        likeCount: likeCounts[drop.id] ?? 0,
+        liked: likedDropIds.has(drop.id),
+        joinStatus: joinStatuses[drop.id] ?? 'none',
+      });
+
+      router.push({
+        pathname: '/drop/[id]',
+        params: { id: drop.id },
+      } as any);
+    },
+    [
+      joinStatuses,
+      likeCounts,
+      likedDropIds,
+    ]
+  );
+
+  useEffect(() => {
+    drops.slice(0, 10).forEach((drop) => {
+      primeDropSnapshot(drop.id, {
+        drop: drop as unknown as Record<string, unknown>,
+        author: drop.profiles
+          ? {
+              id: drop.author_id,
+              username: drop.profiles.username,
+              display_name: drop.profiles.display_name,
+              avatar_url: drop.profiles.avatar_url,
+            }
+          : null,
+      });
+
+      router.prefetch({
+        pathname: '/drop/[id]',
+        params: { id: drop.id },
+      } as any);
+    });
+  }, [drops]);
+
   const loadDrops =
     async (
-      manualRefresh =
-        false
+      manualRefresh = false,
+      silentRefresh = false
     ) => {
       try {
-        if (
-          manualRefresh
-        ) {
-          setRefreshing(
-            true
-          );
-        } else {
-          setLoading(
-            true
-          );
+        if (manualRefresh) {
+          setRefreshing(true);
+        } else if (!silentRefresh) {
+          setLoading(true);
         }
 
         const {
@@ -969,13 +1017,20 @@ export default function ExploreScreen() {
       }
     };
 
+  useEffect(() => {
+    loadDrops().finally(() => {
+      hasLoadedOnce.current = true;
+    });
+  }, []);
+
   useFocusEffect(
-    useCallback(
-      () => {
-        loadDrops();
-      },
-      []
-    )
+    useCallback(() => {
+      if (!hasLoadedOnce.current) {
+        return;
+      }
+
+      loadDrops(false, true);
+    }, [])
   );
 
   const openRating =
@@ -2175,7 +2230,7 @@ export default function ExploreScreen() {
 
                     <Pressable
                     onPress={() =>
-                      router.push({ pathname: '/drop/[id]', params: { id: drop.id } } as any)
+                      openDrop(drop)
                     }
                   >
                   {hasBackground ? (
