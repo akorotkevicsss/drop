@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DropColors, DropTypography } from '@/constants/theme';
 
@@ -7,6 +7,7 @@ type DropFeedMetaProps = {
   eventEndTime: string | null;
   status: 'active' | 'ended' | 'cancelled' | string | null;
   location: string | null;
+  onLocationPress?: (() => void) | null;
   ageRestriction: string | null;
   joinLimit: number | null;
 };
@@ -30,34 +31,93 @@ export function DropFeedMeta({
   eventEndTime,
   status,
   location,
+  onLocationPress,
   ageRestriction,
   joinLimit,
 }: DropFeedMetaProps) {
   const start = formatEventDate(eventTime);
   const end = formatEventDate(eventEndTime);
 
-  const items = [
-    start ? (end ? `${start} — ${end}` : start) : null,
-    location?.trim() || null,
-    ageRestriction?.trim() || null,
-    joinLimit ? `${joinLimit} spots` : null,
-  ].filter(Boolean) as string[];
+  const dateLabel =
+    start
+      ? end
+        ? `${start} — ${end}`
+        : start
+      : null;
 
-  if (!items.length && status === 'active') return null;
+  const locationLabel =
+    location?.trim() || null;
+
+  const ageLabel =
+    ageRestriction?.trim() || null;
+
+  const spotsLabel =
+    joinLimit
+      ? `${joinLimit} spots`
+      : null;
+
+  const hasItems =
+    !!dateLabel ||
+    !!locationLabel ||
+    !!ageLabel ||
+    !!spotsLabel;
+
+  if (!hasItems && status === 'active') return null;
+
+  const renderRow = (
+    value: string,
+    key: string,
+    onPress?: (() => void) | null
+  ) => {
+    const content = (
+      <>
+        <View style={styles.dot} />
+        <Text style={styles.text} numberOfLines={1}>
+          {value}
+        </Text>
+      </>
+    );
+
+    if (onPress) {
+      return (
+        <Pressable
+          key={key}
+          style={({ pressed }) => [
+            styles.row,
+            pressed && styles.locationRowPressed,
+          ]}
+          onPress={(event) => {
+            event.stopPropagation();
+            onPress();
+          }}
+          hitSlop={6}
+        >
+          {content}
+        </Pressable>
+      );
+    }
+
+    return (
+      <View key={key} style={styles.row}>
+        {content}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       {status === 'cancelled' && <Text style={styles.status}>CANCELLED</Text>}
       {status === 'ended' && <Text style={styles.status}>ENDED</Text>}
 
-      {items.map((item, index) => (
-        <View key={`${item}-${index}`} style={styles.row}>
-          <View style={styles.dot} />
-          <Text style={styles.text} numberOfLines={1}>
-            {item}
-          </Text>
-        </View>
-      ))}
+      {!!dateLabel && renderRow(dateLabel, 'date')}
+      {!!locationLabel &&
+        renderRow(
+          locationLabel,
+          'location',
+          onLocationPress
+        )}
+      {!!ageLabel && renderRow(ageLabel, 'age')}
+      {!!spotsLabel && renderRow(spotsLabel, 'spots')}
     </View>
   );
 }
@@ -78,6 +138,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
+  },
+  locationRowPressed: {
+    opacity: 0.62,
   },
   dot: {
     width: 3,

@@ -557,6 +557,33 @@ export default function ExploreScreen() {
     ]
   );
 
+  const openDropLocationOnMap = useCallback(
+    (drop: Drop) => {
+      if (
+        typeof drop.location_lat !== 'number' ||
+        typeof drop.location_lng !== 'number'
+      ) {
+        return;
+      }
+
+      router.push({
+        pathname: '/explore',
+        params: {
+          map: '1',
+          focusDropId: drop.id,
+          lat: String(drop.location_lat),
+          lng: String(drop.location_lng),
+          locationType:
+            drop.location_type ?? 'place',
+          radius: String(
+            drop.location_radius_m ?? 1200
+          ),
+        },
+      } as any);
+    },
+    []
+  );
+
   useEffect(() => {
     drops.slice(0, 10).forEach((drop) => {
       primeDropSnapshot(drop.id, {
@@ -2220,6 +2247,7 @@ export default function ExploreScreen() {
                   );
 
                 const location =
+                  drop.location_name ||
                   drop.location_text ||
                   drop.city ||
                   drop.profiles
@@ -2445,6 +2473,15 @@ export default function ExploreScreen() {
                       eventEndTime={drop.event_end_time}
                       status={drop.status}
                       location={location}
+                      onLocationPress={
+                        typeof drop.location_lat === 'number' &&
+                        typeof drop.location_lng === 'number'
+                          ? () =>
+                              openDropLocationOnMap(
+                                drop
+                              )
+                          : null
+                      }
                       ageRestriction={drop.age_restriction}
                       joinLimit={drop.join_limit}
                     />
