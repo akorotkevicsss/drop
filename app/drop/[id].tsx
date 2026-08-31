@@ -1931,17 +1931,17 @@ export default function ChatScreen() {
         } =
           conversationResult;
 
-        if (
-          conversationError ||
-          !conversationData
-        ) {
-          console.error(
-            'LOAD CHAT CONVERSATION ERROR:',
+        if (conversationError) {
+          console.warn(
+            'LOAD CHAT CONVERSATION WARNING:',
             conversationError
           );
           return;
         }
 
+        if (!conversationData) {
+          return;
+        }
         const {
           data:
             memberData,
