@@ -32,6 +32,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import MapView from 'react-native-maps';
 
+import {
+  DropMapMarkers,
+  DropMapPreview,
+} from '@/components/explore-drop-map';
 import { ExplorePeopleSearch } from '@/components/explore-people-search';
 import { UserAvatar } from '@/components/user-avatar';
 import {
@@ -40,7 +44,6 @@ import {
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { primeDropSnapshot } from '@/store/drop-cache';
-
 type DropAuthor = {
   username: string | null;
   display_name: string | null;
@@ -67,6 +70,13 @@ type Drop = {
   image_path: string | null;
   attached_image_path: string | null;
   location_text: string | null;
+  location_type: 'place' | 'area' | null;
+  location_name: string | null;
+  location_address: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  location_radius_m: number | null;
+  location_provider_id: string | null;
   join_limit: number | null;
   age_restriction: string | null;
   deleted_at: string | null;
@@ -238,6 +248,13 @@ export default function ExploreScreen() {
     useRef<MapView | null>(
       null
     );
+
+  const [
+    selectedMapDropId,
+    setSelectedMapDropId,
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     addressSearchOpen,
@@ -568,6 +585,13 @@ export default function ExploreScreen() {
               image_path,
               attached_image_path,
               location_text,
+              location_type,
+              location_name,
+              location_address,
+              location_lat,
+              location_lng,
+              location_radius_m,
+              location_provider_id,
               join_limit,
               age_restriction,
               deleted_at,
@@ -2670,6 +2694,48 @@ export default function ExploreScreen() {
             scrollEnabled
             zoomEnabled
             toolbarEnabled={false}
+            onPress={() =>
+              setSelectedMapDropId(
+                null
+              )
+            }
+          >
+            <DropMapMarkers
+              drops={drops}
+              selectedDropId={
+                selectedMapDropId
+              }
+              onSelectDrop={
+                setSelectedMapDropId
+              }
+            />
+          </MapView>
+
+          <DropMapPreview
+            drops={drops}
+            selectedDropId={
+              selectedMapDropId
+            }
+            onOpenDrop={(
+              dropId
+            ) => {
+              const drop =
+                drops.find(
+                  (
+                    item
+                  ) =>
+                    item.id ===
+                    dropId
+                );
+
+              if (
+                drop
+              ) {
+                openDrop(
+                  drop
+                );
+              }
+            }}
           />
         </View>
       )}

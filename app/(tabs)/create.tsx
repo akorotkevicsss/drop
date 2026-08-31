@@ -2,6 +2,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import {
+  Tabs,
   router,
   useFocusEffect,
 } from 'expo-router';
@@ -28,6 +29,10 @@ import {
 } from 'react-native';
 
 import { DropDateTimePicker } from '@/components/drop-date-time-picker';
+import {
+  LocationPicker,
+  type DropLocationValue,
+} from '@/components/location-picker';
 import { PhotoEditor } from '@/components/photo-editor';
 
 import {
@@ -415,9 +420,14 @@ export default function CreateScreen() {
     >(null);
 
   const [
-    locationText,
-    setLocationText,
-  ] = useState('');
+    location,
+    setLocation,
+  ] = useState<DropLocationValue | null>(null);
+
+  const [
+    locationPickerOpen,
+    setLocationPickerOpen,
+  ] = useState(false);
 
   const [
     joinLimitText,
@@ -550,9 +560,8 @@ export default function CreateScreen() {
         setPhotoEditorSource(
           null
         );
-        setLocationText(
-          ''
-        );
+        setLocation(null);
+        setLocationPickerOpen(false);
         setJoinLimitText(
           ''
         );
@@ -1163,8 +1172,35 @@ export default function CreateScreen() {
                 attachmentVideoPath,
 
               location_text:
-                locationText
-                  .trim() ||
+                location?.name ??
+                null,
+
+              location_type:
+                location?.type ??
+                null,
+
+              location_name:
+                location?.name ??
+                null,
+
+              location_address:
+                location?.address ??
+                null,
+
+              location_lat:
+                location?.latitude ??
+                null,
+
+              location_lng:
+                location?.longitude ??
+                null,
+
+              location_radius_m:
+                location?.radiusM ??
+                null,
+
+              location_provider_id:
+                location?.providerId ??
                 null,
 
               join_limit:
@@ -1263,7 +1299,19 @@ export default function CreateScreen() {
 
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <>
+      <Tabs.Screen
+        options={{
+          tabBarStyle: {
+            display: 'none',
+          },
+        }}
+      />
+
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <View style={styles.v3Screen}>
         <View style={styles.v3Header}>
           <Pressable onPress={handleCancel} disabled={loading} style={styles.v3HeaderSide}><Text style={styles.v3Cancel}>Cancel</Text></Pressable>
@@ -1372,9 +1420,10 @@ export default function CreateScreen() {
                 <Text style={styles.v3SectionLabel}>LOCATION</Text>
                 <FieldRow
                   label="Location"
-                  value={locationText}
-                  placeholder="Optional"
-                  onChangeText={setLocationText}
+                  value={location?.name ?? ''}
+                  placeholder="Add location"
+                  onPress={() => setLocationPickerOpen(true)}
+                  optional
                 />
 
                 <Text style={styles.v3SectionLabel}>AGE</Text>
@@ -1493,6 +1542,13 @@ export default function CreateScreen() {
         )}
       </View>
 
+      <LocationPicker
+        visible={locationPickerOpen}
+        value={location}
+        onClose={() => setLocationPickerOpen(false)}
+        onChange={setLocation}
+      />
+
       <DropDateTimePicker
         visible={datePicker !== null}
         title={datePicker === 'end' ? 'Drop ends' : 'Drop starts'}
@@ -1564,7 +1620,8 @@ export default function CreateScreen() {
           />
         )}
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
