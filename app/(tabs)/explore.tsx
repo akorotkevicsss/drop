@@ -1,6 +1,7 @@
 import {
   router,
   useFocusEffect,
+  useLocalSearchParams,
 } from 'expo-router';
 
 import {
@@ -232,6 +233,22 @@ function formatJoinTimer(
 export default function ExploreScreen() {
   const hasLoadedOnce = useRef(false);
 
+  const {
+    map: openMapParam,
+    focusDropId,
+    lat: focusLat,
+    lng: focusLng,
+    locationType: focusLocationType,
+    radius: focusRadius,
+  } = useLocalSearchParams<{
+    map?: string;
+    focusDropId?: string;
+    lat?: string;
+    lng?: string;
+    locationType?: 'place' | 'area';
+    radius?: string;
+  }>();
+
   const [
     mode,
     setMode,
@@ -256,6 +273,86 @@ export default function ExploreScreen() {
     null
   );
 
+  useEffect(() => {
+    if (
+      openMapParam !== '1'
+    ) {
+      return;
+    }
+
+    const latitude =
+      Number(focusLat);
+
+    const longitude =
+      Number(focusLng);
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      return;
+    }
+
+    setMode('map');
+
+    if (
+      focusDropId
+    ) {
+      setSelectedMapDropId(
+        focusDropId
+      );
+    }
+
+    const radiusMeters =
+      Number(focusRadius);
+
+    const effectiveRadius =
+      Number.isFinite(radiusMeters) &&
+      radiusMeters > 0
+        ? radiusMeters
+        : 1200;
+
+    const latitudeDelta =
+      focusLocationType === 'area'
+        ? Math.max(
+            0.035,
+            Math.min(
+              0.18,
+              effectiveRadius / 30000
+            )
+          )
+        : 0.012;
+
+    const longitudeDelta =
+      latitudeDelta;
+
+    const timer =
+      setTimeout(() => {
+        mapRef.current?.animateToRegion(
+          {
+            latitude,
+            longitude,
+            latitudeDelta,
+            longitudeDelta,
+          },
+          650
+        );
+      }, 300);
+
+    return () => {
+      clearTimeout(
+        timer
+      );
+    };
+  }, [
+    openMapParam,
+    focusDropId,
+    focusLat,
+    focusLng,
+    focusLocationType,
+    focusRadius,
+  ]);
+
   const [
     addressSearchOpen,
     setAddressSearchOpen,
@@ -274,6 +371,14 @@ export default function ExploreScreen() {
   const [
     drops,
     setDrops,
+  ] =
+    useState<
+      Drop[]
+    >([]);
+
+  const [
+    mapDrops,
+    setMapDrops,
   ] =
     useState<
       Drop[]
@@ -646,6 +751,10 @@ export default function ExploreScreen() {
                 drop.author_id
               )
           );
+
+        setMapDrops(
+          loadedDrops
+        );
 
         setDrops(
           discoveryDrops
@@ -2701,7 +2810,7 @@ export default function ExploreScreen() {
             }
           >
             <DropMapMarkers
-              drops={drops}
+              drops={mapDrops}
               selectedDropId={
                 selectedMapDropId
               }
@@ -2712,7 +2821,7 @@ export default function ExploreScreen() {
           </MapView>
 
           <DropMapPreview
-            drops={drops}
+            drops={mapDrops}
             selectedDropId={
               selectedMapDropId
             }
@@ -2720,7 +2829,7 @@ export default function ExploreScreen() {
               dropId
             ) => {
               const drop =
-                drops.find(
+                mapDrops.find(
                   (
                     item
                   ) =>

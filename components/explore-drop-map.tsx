@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+
 import * as ReactNativeMaps from 'react-native-maps';
 
 import {
@@ -108,7 +110,7 @@ export function DropMapMarkers({
           selectedDropId === drop.id;
 
         return (
-          <React.Fragment key={drop.id}>
+          <Fragment key={drop.id}>
             {drop.location_type === 'area' && Circle ? (
               <Circle
                 center={coordinate}
@@ -144,7 +146,7 @@ export function DropMapMarkers({
                 ) : null}
               </View>
             </Marker>
-          </React.Fragment>
+          </Fragment>
         );
       })}
     </>
@@ -261,7 +263,7 @@ const styles =
       position: 'absolute',
       left: 14,
       right: 14,
-      bottom: 14,
+      bottom: 86,
     },
 
     preview: {
