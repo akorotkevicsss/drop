@@ -1,29 +1,59 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import { DropColors, DropTypography } from '@/constants/theme';
+import {
+  DropColors,
+  DropTypography,
+} from '@/constants/theme';
 
 type DropFeedMetaProps = {
   eventTime: string | null;
   eventEndTime: string | null;
-  status: 'active' | 'ended' | 'cancelled' | string | null;
+  status:
+    | 'active'
+    | 'ended'
+    | 'cancelled'
+    | string
+    | null;
   location: string | null;
-  onLocationPress?: (() => void) | null;
+  onLocationPress?:
+    | (() => void)
+    | null;
   ageRestriction: string | null;
   joinLimit: number | null;
 };
 
-function formatEventDate(value: string | null) {
-  if (!value) return null;
+function formatEventDate(
+  value: string | null
+) {
+  if (!value) {
+    return null;
+  }
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
+  const date =
+    new Date(value);
 
-  return date.toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date.toLocaleString(
+    'en-GB',
+    {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }
+  );
 }
 
 export function DropFeedMeta({
@@ -35,8 +65,15 @@ export function DropFeedMeta({
   ageRestriction,
   joinLimit,
 }: DropFeedMetaProps) {
-  const start = formatEventDate(eventTime);
-  const end = formatEventDate(eventEndTime);
+  const start =
+    formatEventDate(
+      eventTime
+    );
+
+  const end =
+    formatEventDate(
+      eventEndTime
+    );
 
   const dateLabel =
     start
@@ -46,10 +83,12 @@ export function DropFeedMeta({
       : null;
 
   const locationLabel =
-    location?.trim() || null;
+    location?.trim() ||
+    null;
 
   const ageLabel =
-    ageRestriction?.trim() || null;
+    ageRestriction?.trim() ||
+    null;
 
   const spotsLabel =
     joinLimit
@@ -62,17 +101,34 @@ export function DropFeedMeta({
     !!ageLabel ||
     !!spotsLabel;
 
-  if (!hasItems && status === 'active') return null;
+  if (
+    !hasItems &&
+    status === 'active'
+  ) {
+    return null;
+  }
 
   const renderRow = (
     value: string,
     key: string,
-    onPress?: (() => void) | null
+    onPress?:
+      | (() => void)
+      | null
   ) => {
     const content = (
       <>
-        <View style={styles.dot} />
-        <Text style={styles.text} numberOfLines={1}>
+        <View
+          style={
+            styles.dot
+          }
+        />
+
+        <Text
+          style={
+            styles.text
+          }
+          numberOfLines={1}
+        >
           {value}
         </Text>
       </>
@@ -82,11 +138,16 @@ export function DropFeedMeta({
       return (
         <Pressable
           key={key}
-          style={({ pressed }) => [
+          style={({
+            pressed,
+          }) => [
             styles.row,
-            pressed && styles.locationRowPressed,
+            pressed &&
+              styles.locationPressed,
           ]}
-          onPress={(event) => {
+          onPress={(
+            event
+          ) => {
             event.stopPropagation();
             onPress();
           }}
@@ -98,62 +159,116 @@ export function DropFeedMeta({
     }
 
     return (
-      <View key={key} style={styles.row}>
+      <View
+        key={key}
+        style={
+          styles.row
+        }
+      >
         {content}
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
-      {status === 'cancelled' && <Text style={styles.status}>CANCELLED</Text>}
-      {status === 'ended' && <Text style={styles.status}>ENDED</Text>}
+    <View
+      style={
+        styles.container
+      }
+    >
+      {status ===
+        'cancelled' && (
+        <Text
+          style={
+            styles.status
+          }
+        >
+          CANCELLED
+        </Text>
+      )}
 
-      {!!dateLabel && renderRow(dateLabel, 'date')}
+      {status ===
+        'ended' && (
+        <Text
+          style={
+            styles.status
+          }
+        >
+          ENDED
+        </Text>
+      )}
+
+      {!!dateLabel &&
+        renderRow(
+          dateLabel,
+          'date'
+        )}
+
       {!!locationLabel &&
         renderRow(
           locationLabel,
           'location',
           onLocationPress
         )}
-      {!!ageLabel && renderRow(ageLabel, 'age')}
-      {!!spotsLabel && renderRow(spotsLabel, 'spots')}
+
+      {!!ageLabel &&
+        renderRow(
+          ageLabel,
+          'age'
+        )}
+
+      {!!spotsLabel &&
+        renderRow(
+          spotsLabel,
+          'spots'
+        )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    marginTop: 10,
-    gap: 5,
-  },
-  status: {
-    color: DropColors.textMuted,
-    fontFamily: DropTypography.medium,
-    fontSize: 10,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 0,
-  },
-  locationRowPressed: {
-    opacity: 0.62,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: DropColors.textMuted,
-    marginRight: 7,
-  },
-  text: {
-    flex: 1,
-    minWidth: 0,
-    color: DropColors.textSecondary,
-    fontFamily: DropTypography.regular,
-    fontSize: 11,
-  },
-});
+const styles =
+  StyleSheet.create({
+    container: {
+      marginTop: 10,
+      gap: 5,
+    },
+
+    status: {
+      color:
+        DropColors.textMuted,
+      fontFamily:
+        DropTypography.medium,
+      fontSize: 10,
+      letterSpacing: 1,
+      marginBottom: 2,
+    },
+
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minWidth: 0,
+    },
+
+    locationPressed: {
+      opacity: 0.62,
+    },
+
+    dot: {
+      width: 3,
+      height: 3,
+      borderRadius: 1.5,
+      backgroundColor:
+        DropColors.textMuted,
+      marginRight: 7,
+    },
+
+    text: {
+      flex: 1,
+      minWidth: 0,
+      color:
+        DropColors.textSecondary,
+      fontFamily:
+        DropTypography.regular,
+      fontSize: 11,
+    },
+  });

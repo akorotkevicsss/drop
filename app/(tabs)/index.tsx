@@ -64,6 +64,13 @@ type Drop = {
   image_path: string | null;
   attached_image_path: string | null;
   location_text: string | null;
+  location_type: 'place' | 'area' | null;
+  location_name: string | null;
+  location_address: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  location_radius_m: number | null;
+  location_provider_id: string | null;
   join_limit: number | null;
   age_restriction: string | null;
   deleted_at: string | null;
@@ -335,6 +342,33 @@ export default function HomeScreen() {
     ]
   );
 
+  const openDropLocationOnMap = useCallback(
+    (drop: Drop) => {
+      if (
+        typeof drop.location_lat !== 'number' ||
+        typeof drop.location_lng !== 'number'
+      ) {
+        return;
+      }
+
+      router.push({
+        pathname: '/(tabs)/explore',
+        params: {
+          map: '1',
+          focusDropId: drop.id,
+          lat: String(drop.location_lat),
+          lng: String(drop.location_lng),
+          locationType:
+            drop.location_type ?? 'place',
+          radius: String(
+            drop.location_radius_m ?? 1200
+          ),
+        },
+      } as any);
+    },
+    []
+  );
+
   useEffect(() => {
     drops.slice(0, 8).forEach((drop) => {
       primeDropSnapshot(drop.id, {
@@ -510,6 +544,13 @@ export default function HomeScreen() {
             image_path,
             attached_image_path,
             location_text,
+            location_type,
+            location_name,
+            location_address,
+            location_lat,
+            location_lng,
+            location_radius_m,
+            location_provider_id,
             join_limit,
             age_restriction,
             deleted_at,
@@ -1898,6 +1939,7 @@ export default function HomeScreen() {
                 );
 
               const location =
+                drop.location_name ||
                 drop.location_text ||
                 drop.city ||
                 drop
@@ -2129,6 +2171,15 @@ export default function HomeScreen() {
                     eventEndTime={drop.event_end_time}
                     status={drop.status}
                     location={location}
+                    onLocationPress={
+                      typeof drop.location_lat === 'number' &&
+                      typeof drop.location_lng === 'number'
+                        ? () =>
+                            openDropLocationOnMap(
+                              drop
+                            )
+                        : null
+                    }
                     ageRestriction={drop.age_restriction}
                     joinLimit={drop.join_limit}
                   />

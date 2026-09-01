@@ -301,7 +301,11 @@ export default function TabLayout() {
     }
 
     const channel = supabase
-      .channel(`tab-unread-${currentUserId}`)
+      .channel(
+        `tab-unread-${currentUserId}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`
+      )
       .on(
         'postgres_changes',
         {
@@ -376,7 +380,6 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="explore"
       screenOptions={{
         headerShown: false,
         lazy: false,

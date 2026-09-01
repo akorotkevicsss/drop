@@ -566,20 +566,46 @@ export default function ExploreScreen() {
         return;
       }
 
-      router.push({
-        pathname: '/explore',
-        params: {
-          map: '1',
-          focusDropId: drop.id,
-          lat: String(drop.location_lat),
-          lng: String(drop.location_lng),
-          locationType:
-            drop.location_type ?? 'place',
-          radius: String(
-            drop.location_radius_m ?? 1200
-          ),
-        },
-      } as any);
+      setMode('map');
+      setSelectedMapDropId(
+        drop.id
+      );
+
+      const radiusMeters =
+        drop.location_radius_m ?? 1200;
+
+      const latitudeDelta =
+        drop.location_type === 'area'
+          ? Math.max(
+              0.035,
+              Math.min(
+                0.18,
+                radiusMeters / 30000
+              )
+            )
+          : 0.012;
+
+      const timer =
+        setTimeout(() => {
+          mapRef.current?.animateToRegion(
+            {
+              latitude:
+                drop.location_lat as number,
+              longitude:
+                drop.location_lng as number,
+              latitudeDelta,
+              longitudeDelta:
+                latitudeDelta,
+            },
+            650
+          );
+        }, 250);
+
+      return () => {
+        clearTimeout(
+          timer
+        );
+      };
     },
     []
   );
