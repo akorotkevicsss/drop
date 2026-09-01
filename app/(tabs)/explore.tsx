@@ -272,6 +272,16 @@ export default function ExploreScreen() {
   ] = useState<string | null>(
     null
   );
+
+  const [
+    mapRegion,
+    setMapRegion,
+  ] = useState({
+    latitude: 56.9496,
+    longitude: 24.1052,
+    latitudeDelta: 0.12,
+    longitudeDelta: 0.12,
+  });
   useEffect(() => {
     if (
       openMapParam !== '1'
@@ -2865,6 +2875,9 @@ export default function ExploreScreen() {
             scrollEnabled
             zoomEnabled
             toolbarEnabled={false}
+            onRegionChangeComplete={(nextRegion) => {
+              setMapRegion(nextRegion);
+            }}
             onPress={(event) => {
               if (
                 event.nativeEvent.action &&
@@ -2878,10 +2891,19 @@ export default function ExploreScreen() {
 
           >
           <DropMapMarkers
-              drops={mapDrops}
-              selectedDropId={selectedMapDropId}
-              onSelectDrop={setSelectedMapDropId}
-            />
+            drops={mapDrops}
+            selectedDropId={selectedMapDropId}
+            onSelectDrop={setSelectedMapDropId}
+            region={mapRegion}
+            onOpenCluster={(nextRegion) => {
+              setSelectedMapDropId(null);
+
+              mapRef.current?.animateToRegion(
+                nextRegion,
+                450
+              );
+            }}
+          />
           </MapView>
 
           <DropMapPreview

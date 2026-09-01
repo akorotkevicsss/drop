@@ -20,6 +20,13 @@ const Circle =
   (ReactNativeMaps as any).Circle ??
   (ReactNativeMaps as any).default?.Circle;
 
+export type MapRegion = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
 export type ExploreMapDrop = {
   id: string;
   text: string;
@@ -54,12 +61,40 @@ type MarkerProps = {
   drops: ExploreMapDrop[];
   selectedDropId: string | null;
   onSelectDrop: (dropId: string | null) => void;
+  region: MapRegion;
+  onOpenCluster: (region: MapRegion) => void;
 };
 
 type PreviewProps = {
   drops: ExploreMapDrop[];
   selectedDropId: string | null;
   onOpenDrop: (dropId: string) => void;
+};
+
+type MapNode =
+  | {
+      kind: 'place';
+      key: string;
+      latitude: number;
+      longitude: number;
+      count: 1;
+      drop: ExploreMapDrop;
+    }
+  | {
+      kind: 'area';
+      key: string;
+      latitude: number;
+      longitude: number;
+      count: number;
+      group: AreaGroup;
+    };
+
+type ClusterNode = {
+  key: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  nodes: MapNode[];
 };
 
 function normalizeAreaName(value: string) {
@@ -110,8 +145,6 @@ export function getAreaGroups(
       drop.location_text ||
       'Area';
 
-    // Group provider-backed Areas by provider id.
-    // Legacy same-name Areas still group together.
     const key =
       drop.location_provider_id ||
       `area:${normalizeAreaName(name)}`;
@@ -155,79 +188,265 @@ function findAreaGroupForDrop(
   );
 }
 
+function buildMapNodes(
+  drops: ExploreMapDrop[]
+): MapNode[] {
+  const mappable = getMappableDrops(drops);
+
+  const places: MapNode[] =
+    mappable
+      .filter((drop) => drop.location_type !== 'area')
+      .map((drop) => ({
+        kind: 'place' as const,
+        key: `place:${drop.id}`,
+        latitude: drop.location_lat as number,
+        longitude: drop.location_lng as number,
+        count: 1 as const,
+        drop,
+      }));
+
+  const areas: MapNode[] =
+    getAreaGroups(mappable).map((group) => ({
+      kind: 'area' as const,
+      key: group.key,
+      latitude: group.latitude,
+      longitude: group.longitude,
+      count: group.drops.length,
+      group,
+    }));
+
+  return [...places, ...areas];
+}
+
+/**
+ * Screen-space grid clustering.
+ *
+ * Crucially, Area nodes carry their REAL Drop count.
+ * Purvciems with 5 Drops therefore contributes 5 to a remote cluster,
+ * while a Place contributes 1.
+ *
+ * At close zoom (longitudeDelta <= 0.22) we keep the existing UI:
+ * Places stay individual and Areas stay grouped with their approximate circle.
+ */
+function clusterNodes(
+  nodes: MapNode[],
+  region: MapRegion
+): ClusterNode[] {
+  if (region.longitudeDelta <= 0.22) {
+    return nodes.map((node) => ({
+      key: `single:${node.key}`,
+      latitude: node.latitude,
+      longitude: node.longitude,
+      count: node.count,
+      nodes: [node],
+    }));
+  }
+
+  // Cell size grows naturally as the visible map gets wider.
+  // ~8 cells across the viewport gives a readable density map.
+  const lngCell = Math.max(
+    region.longitudeDelta / 8,
+    0.025
+  );
+  const latCell = Math.max(
+    region.latitudeDelta / 8,
+    0.018
+  );
+
+  const buckets = new Map<
+    string,
+    {
+      nodes: MapNode[];
+      weightedLat: number;
+      weightedLng: number;
+      count: number;
+    }
+  >();
+
+  for (const node of nodes) {
+    const x = Math.floor(node.longitude / lngCell);
+    const y = Math.floor(node.latitude / latCell);
+    const key = `${x}:${y}`;
+
+    const current = buckets.get(key) ?? {
+      nodes: [],
+      weightedLat: 0,
+      weightedLng: 0,
+      count: 0,
+    };
+
+    current.nodes.push(node);
+    current.weightedLat += node.latitude * node.count;
+    current.weightedLng += node.longitude * node.count;
+    current.count += node.count;
+
+    buckets.set(key, current);
+  }
+
+  return Array.from(buckets.entries()).map(
+    ([key, bucket]) => ({
+      key: `cluster:${key}`,
+      latitude:
+        bucket.weightedLat / bucket.count,
+      longitude:
+        bucket.weightedLng / bucket.count,
+      count: bucket.count,
+      nodes: bucket.nodes,
+    })
+  );
+}
+
+function clusterExpansionRegion(
+  cluster: ClusterNode
+): MapRegion {
+  const latitudes =
+    cluster.nodes.map((node) => node.latitude);
+  const longitudes =
+    cluster.nodes.map((node) => node.longitude);
+
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+
+  // Same-coordinate nodes (e.g. one Area group) still get a useful zoom.
+  const latitudeDelta = Math.max(
+    (maxLat - minLat) * 2.2,
+    0.08
+  );
+
+  const longitudeDelta = Math.max(
+    (maxLng - minLng) * 2.2,
+    0.08
+  );
+
+  return {
+    latitude: cluster.latitude,
+    longitude: cluster.longitude,
+    latitudeDelta,
+    longitudeDelta,
+  };
+}
+
 export function DropMapMarkers({
   drops,
   selectedDropId,
   onSelectDrop,
+  region,
+  onOpenCluster,
 }: MarkerProps) {
   if (!Marker) return null;
 
   const mappableDrops = getMappableDrops(drops);
-
-  const placeDrops = mappableDrops.filter(
-    (drop) => drop.location_type !== 'area'
-  );
-
-  const areaGroups = getAreaGroups(mappableDrops);
-
   const selectedArea =
     findAreaGroupForDrop(
       mappableDrops,
       selectedDropId
     );
 
+  const clusters =
+    clusterNodes(
+      buildMapNodes(mappableDrops),
+      region
+    );
+
   return (
     <>
-      {placeDrops.map((drop) => {
-        const selected =
-          selectedDropId === drop.id;
+      {clusters.map((cluster) => {
+        const node =
+          cluster.nodes.length === 1
+            ? cluster.nodes[0]
+            : null;
 
-        return (
-          <Marker
-            key={drop.id}
-            coordinate={{
-              latitude:
-                drop.location_lat as number,
-              longitude:
-                drop.location_lng as number,
-            }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            zIndex={selected ? 100 : 60}
-            tracksViewChanges
-            stopPropagation
-            onPress={(event: any) => {
-              event?.stopPropagation?.();
-              onSelectDrop(drop.id);
-            }}
-          >
-            <View
-              pointerEvents="none"
-              style={[
-                styles.placeMarker,
-                selected &&
-                  styles.placeMarkerSelected,
-              ]}
-            />
-          </Marker>
-        );
-      })}
+        const isRemoteCluster =
+          region.longitudeDelta > 0.22 &&
+          (
+            cluster.nodes.length > 1 ||
+            cluster.count > 1
+          );
 
-      {areaGroups.map((group) => {
+        if (isRemoteCluster) {
+          return (
+            <Marker
+              key={cluster.key}
+              coordinate={{
+                latitude: cluster.latitude,
+                longitude: cluster.longitude,
+              }}
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={150}
+              tracksViewChanges={false}
+              stopPropagation
+              onPress={(event: any) => {
+                event?.stopPropagation?.();
+                onSelectDrop(null);
+                onOpenCluster(
+                  clusterExpansionRegion(cluster)
+                );
+              }}
+            >
+              <View
+                pointerEvents="none"
+                style={styles.clusterMarker}
+              >
+                <Text
+                  pointerEvents="none"
+                  style={styles.clusterMarkerCount}
+                >
+                  {cluster.count > 999
+                    ? '999+'
+                    : cluster.count}
+                </Text>
+              </View>
+            </Marker>
+          );
+        }
+
+        if (!node) return null;
+
+        if (node.kind === 'place') {
+          const selected =
+            selectedDropId === node.drop.id;
+
+          return (
+            <Marker
+              key={node.key}
+              coordinate={{
+                latitude: node.latitude,
+                longitude: node.longitude,
+              }}
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={selected ? 100 : 60}
+              tracksViewChanges
+              stopPropagation
+              onPress={(event: any) => {
+                event?.stopPropagation?.();
+                onSelectDrop(node.drop.id);
+              }}
+            >
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.placeMarker,
+                  selected &&
+                    styles.placeMarkerSelected,
+                ]}
+              />
+            </Marker>
+          );
+        }
+
+        const group = node.group;
         const selected =
           selectedArea?.key === group.key;
 
-        const count =
-          group.drops.length;
-
-        // Existing Explore already owns selectedMapDropId.
-        // Use the first Drop id as the group's stable selection token.
         const selectionId =
           group.drops[0]?.id ?? null;
 
         if (!selectionId) return null;
 
         return (
-          <View key={group.key}>
+          <View key={node.key}>
             {Circle ? (
               <Circle
                 center={{
@@ -245,9 +464,7 @@ export function DropMapMarkers({
                     ? 'rgba(125,13,13,0.72)'
                     : 'rgba(125,13,13,0.42)'
                 }
-                strokeWidth={
-                  selected ? 2 : 1
-                }
+                strokeWidth={selected ? 2 : 1}
                 zIndex={1}
                 tappable
                 onPress={(event: any) => {
@@ -283,7 +500,9 @@ export function DropMapMarkers({
                   pointerEvents="none"
                   style={styles.areaMarkerCount}
                 >
-                  {count > 99 ? '99+' : count}
+                  {group.drops.length > 99
+                    ? '99+'
+                    : group.drops.length}
                 </Text>
               </View>
             </Marker>
@@ -319,9 +538,7 @@ export function DropMapPreview({
       >
         <View style={styles.preview}>
           <View style={styles.previewTopRow}>
-            <View
-              style={styles.previewLocationWrap}
-            >
+            <View style={styles.previewLocationWrap}>
               <Text
                 numberOfLines={1}
                 style={styles.previewLocation}
@@ -329,17 +546,13 @@ export function DropMapPreview({
                 {areaGroup.name}
               </Text>
 
-              <Text
-                style={styles.previewAreaHint}
-              >
+              <Text style={styles.previewAreaHint}>
                 APPROXIMATE AREA
               </Text>
             </View>
 
             <View style={styles.countBadge}>
-              <Text
-                style={styles.countBadgeText}
-              >
+              <Text style={styles.countBadgeText}>
                 {count}
               </Text>
             </View>
@@ -347,9 +560,7 @@ export function DropMapPreview({
 
           <Text style={styles.areaTitle}>
             {count}{' '}
-            {count === 1
-              ? 'Drop'
-              : 'Drops'}{' '}
+            {count === 1 ? 'Drop' : 'Drops'}{' '}
             in {areaGroup.name}
           </Text>
 
@@ -359,10 +570,8 @@ export function DropMapPreview({
               router.push({
                 pathname: '/area-drops',
                 params: {
-                  areaKey:
-                    areaGroup.key,
-                  areaName:
-                    areaGroup.name,
+                  areaKey: areaGroup.key,
+                  areaName: areaGroup.name,
                 },
               } as any);
             }}
@@ -376,8 +585,7 @@ export function DropMapPreview({
 
   const selectedDrop =
     mappableDrops.find(
-      (drop) =>
-        drop.id === selectedDropId
+      (drop) => drop.id === selectedDropId
     ) ?? null;
 
   if (!selectedDrop) return null;
@@ -474,6 +682,24 @@ const styles = StyleSheet.create({
     color: DropColors.warmWhite,
     fontFamily: DropTypography.semibold,
     fontSize: 12,
+  },
+
+  clusterMarker: {
+    minWidth: 48,
+    height: 48,
+    paddingHorizontal: 11,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DropColors.wine,
+    borderWidth: 3,
+    borderColor: DropColors.warmWhite,
+  },
+
+  clusterMarkerCount: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 13,
   },
 
   previewLayer: {
