@@ -2287,7 +2287,7 @@ const styles =
       overflow: 'hidden',
       borderBottomWidth: 0,
     },
-    v3MainInput: {
+   v3MainInput: {
       minHeight: 144,
       paddingHorizontal: 18,
       paddingTop: 12,
@@ -2296,6 +2296,7 @@ const styles =
       fontFamily: DropTypography.regular,
       fontSize: 20,
       lineHeight: 27,
+      textAlign: 'center',
       textAlignVertical: 'top',
     },
     v3Counter: {

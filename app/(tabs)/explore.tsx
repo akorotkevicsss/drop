@@ -2866,11 +2866,7 @@ export default function ExploreScreen() {
             scrollEnabled
             zoomEnabled
             toolbarEnabled={false}
-            onPress={() =>
-              setSelectedMapDropId(
-                null
-              )
-            }
+
           >
             <DropMapMarkers
               drops={mapDrops}

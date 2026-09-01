@@ -1,7 +1,7 @@
 import { DropDateTimePicker } from '@/components/drop-date-time-picker';
 import {
   LocationPicker,
-  StructuredLocation,
+  type DropLocationValue,
 } from '@/components/location-picker';
 import {
   DropColors,
@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -59,7 +58,7 @@ function formatDate(value: Date | null) {
     : '';
 }
 
-function locationLabel(location: StructuredLocation | null) {
+function locationLabel(location: DropLocationValue | null) {
   if (!location) {
     return '';
   }
@@ -78,7 +77,7 @@ export default function EditDropScreen() {
   const [eventEnd, setEventEnd] = useState<Date | null>(null);
   const [datePicker, setDatePicker] = useState<'start' | 'end' | null>(null);
 
-  const [location, setLocation] = useState<StructuredLocation | null>(null);
+  const [location, setLocation] = useState<DropLocationValue | null>(null);
   const [legacyLocationText, setLegacyLocationText] = useState('');
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
 
@@ -160,12 +159,12 @@ export default function EditDropScreen() {
         setEventStart(data.event_time ? new Date(data.event_time) : null);
         setEventEnd(data.event_end_time ? new Date(data.event_end_time) : null);
 
-        const hasStructuredLocation =
+        const hasDropLocationValue =
           (data.location_type === 'place' || data.location_type === 'area') &&
           typeof data.location_lat === 'number' &&
           typeof data.location_lng === 'number';
 
-        if (hasStructuredLocation) {
+        if (hasDropLocationValue) {
           setLocation({
             type: data.location_type,
             name: data.location_name ?? data.location_text ?? '',
@@ -611,21 +610,17 @@ export default function EditDropScreen() {
         }}
       />
 
-      <Modal
+      <LocationPicker
         visible={locationPickerVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setLocationPickerVisible(false)}
-      >
-        <LocationPicker
-          value={location}
-          onChange={(nextLocation) => {
-            setLocation(nextLocation);
-            setLegacyLocationText('');
-          }}
-          onClose={() => setLocationPickerVisible(false)}
-        />
-      </Modal>
+        value={location}
+        onChange={(nextLocation) => {
+          setLocation(nextLocation);
+          setLegacyLocationText('');
+        }}
+        onClose={() => {
+          setLocationPickerVisible(false);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

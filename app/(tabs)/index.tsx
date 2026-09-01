@@ -978,7 +978,9 @@ export default function HomeScreen() {
     const channel =
       supabase
         .channel(
-          `home-activity-badge-${currentUserId}`
+          `home-activity-badge-${currentUserId}-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2)}`
         )
         .on(
           'postgres_changes',
