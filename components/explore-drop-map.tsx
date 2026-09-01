@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { Fragment } from 'react';
 import * as ReactNativeMaps from 'react-native-maps';
 
 import {
@@ -296,6 +297,34 @@ function clusterNodes(
   );
 }
 
+function clusterVisualTier(
+  region: MapRegion
+) {
+  const delta =
+    Math.max(
+      region.latitudeDelta,
+      region.longitudeDelta
+    );
+
+  if (delta >= 20) {
+    return 'world';
+  }
+
+  if (delta >= 6) {
+    return 'continent';
+  }
+
+  if (delta >= 2) {
+    return 'country';
+  }
+
+  if (delta >= 0.7) {
+    return 'region';
+  }
+
+  return 'city';
+}
+
 function clusterExpansionRegion(
   cluster: ClusterNode
 ): MapRegion {
@@ -375,7 +404,7 @@ export function DropMapMarkers({
               }}
               anchor={{ x: 0.5, y: 0.5 }}
               zIndex={150}
-              tracksViewChanges={false}
+              tracksViewChanges
               stopPropagation
               onPress={(event: any) => {
                 event?.stopPropagation?.();
@@ -387,11 +416,25 @@ export function DropMapMarkers({
             >
               <View
                 pointerEvents="none"
-                style={styles.clusterMarker}
+                style={[
+                  styles.clusterMarker,
+                  styles[
+                    `clusterMarker_${clusterVisualTier(
+                      region
+                    )}` as keyof typeof styles
+                  ],
+                ]}
               >
                 <Text
                   pointerEvents="none"
-                  style={styles.clusterMarkerCount}
+                  style={[
+                    styles.clusterMarkerCount,
+                    styles[
+                      `clusterMarkerCount_${clusterVisualTier(
+                        region
+                      )}` as keyof typeof styles
+                    ],
+                  ]}
                 >
                   {cluster.count > 999
                     ? '999+'
@@ -446,7 +489,7 @@ export function DropMapMarkers({
         if (!selectionId) return null;
 
         return (
-          <View key={node.key}>
+          <Fragment key={node.key}>
             {Circle ? (
               <Circle
                 center={{
@@ -475,13 +518,14 @@ export function DropMapMarkers({
             ) : null}
 
             <Marker
+              key={`area-marker:${node.key}`}
               coordinate={{
                 latitude: group.latitude,
                 longitude: group.longitude,
               }}
               anchor={{ x: 0.5, y: 0.5 }}
               zIndex={selected ? 120 : 90}
-              tracksViewChanges={false}
+              tracksViewChanges
               stopPropagation
               onPress={(event: any) => {
                 event?.stopPropagation?.();
@@ -506,7 +550,7 @@ export function DropMapMarkers({
                 </Text>
               </View>
             </Marker>
-          </View>
+          </Fragment>
         );
       })}
     </>
@@ -685,10 +729,7 @@ const styles = StyleSheet.create({
   },
 
   clusterMarker: {
-    minWidth: 48,
-    height: 48,
     paddingHorizontal: 11,
-    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: DropColors.wine,
@@ -700,6 +741,63 @@ const styles = StyleSheet.create({
     color: DropColors.warmWhite,
     fontFamily: DropTypography.semibold,
     fontSize: 13,
+  },
+
+  clusterMarker_city: {
+    minWidth: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+
+  clusterMarker_region: {
+    minWidth: 42,
+    height: 42,
+    borderRadius: 21,
+    paddingHorizontal: 9,
+  },
+
+  clusterMarker_country: {
+    minWidth: 36,
+    height: 36,
+    borderRadius: 18,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+  },
+
+  clusterMarker_continent: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 7,
+    borderWidth: 2,
+  },
+
+  clusterMarker_world: {
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    paddingHorizontal: 6,
+    borderWidth: 2,
+  },
+
+  clusterMarkerCount_city: {
+    fontSize: 13,
+  },
+
+  clusterMarkerCount_region: {
+    fontSize: 12,
+  },
+
+  clusterMarkerCount_country: {
+    fontSize: 11,
+  },
+
+  clusterMarkerCount_continent: {
+    fontSize: 10,
+  },
+
+  clusterMarkerCount_world: {
+    fontSize: 9,
   },
 
   previewLayer: {
