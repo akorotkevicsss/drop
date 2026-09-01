@@ -1,5 +1,3 @@
-import { Fragment } from 'react';
-
 import * as ReactNativeMaps from 'react-native-maps';
 
 import {
@@ -34,6 +32,7 @@ export type ExploreMapDrop = {
   location_lat: number | null;
   location_lng: number | null;
   location_radius_m: number | null;
+  location_provider_id?: string | null;
   profiles: {
     username: string | null;
     display_name: string | null;
@@ -42,24 +41,42 @@ export type ExploreMapDrop = {
   } | null;
 };
 
+export type AreaGroup = {
+  key: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusM: number;
+  drops: ExploreMapDrop[];
+};
+
 type MarkerProps = {
   drops: ExploreMapDrop[];
   selectedDropId: string | null;
+  selectedAreaKey?: string | null;
   onSelectDrop: (dropId: string | null) => void;
+  onSelectArea?: (areaKey: string | null) => void;
 };
 
 type PreviewProps = {
   drops: ExploreMapDrop[];
   selectedDropId: string | null;
+  selectedAreaKey?: string | null;
   onOpenDrop: (dropId: string) => void;
+  onOpenArea?: (group: AreaGroup) => void;
 };
 
-function isMappableDrop(
-  drop: ExploreMapDrop
-) {
-  if (drop.status !== 'active') {
-    return false;
-  }
+function normalizeAreaName(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function isMappableDrop(drop: ExploreMapDrop) {
+  if (drop.status !== 'active') return false;
 
   if (
     typeof drop.location_lat !== 'number' ||
@@ -78,153 +95,166 @@ function isMappableDrop(
   return true;
 }
 
-function getAreaRadius(
-  drop: ExploreMapDrop
-) {
-  const radius =
-    drop.location_radius_m;
-
-  if (
-    typeof radius === 'number' &&
-    Number.isFinite(radius) &&
-    radius > 0
-  ) {
-    return radius;
-  }
-
-  return 1200;
-}
-
-export function getMappableDrops<
-  T extends ExploreMapDrop
->(
+export function getMappableDrops<T extends ExploreMapDrop>(
   drops: T[]
 ) {
   return drops.filter(isMappableDrop);
 }
 
+export function getAreaGroups(
+  drops: ExploreMapDrop[]
+): AreaGroup[] {
+  const groups = new Map<string, AreaGroup>();
+
+  for (const drop of getMappableDrops(drops)) {
+    if (drop.location_type !== 'area') continue;
+
+    const name =
+      drop.location_name ||
+      drop.location_text ||
+      'Area';
+
+    // Prefer provider id. Fallback to normalized name so legacy Riga drops still group.
+    const key =
+      drop.location_provider_id ||
+      `area:${normalizeAreaName(name)}`;
+
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.drops.push(drop);
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      name,
+      latitude: drop.location_lat as number,
+      longitude: drop.location_lng as number,
+      radiusM:
+        typeof drop.location_radius_m === 'number' &&
+        drop.location_radius_m > 0
+          ? drop.location_radius_m
+          : 1600,
+      drops: [drop],
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
 export function DropMapMarkers({
   drops,
   selectedDropId,
+  selectedAreaKey = null,
   onSelectDrop,
+  onSelectArea,
 }: MarkerProps) {
-  if (!Marker) {
-    return null;
-  }
+  if (!Marker) return null;
 
-  const mappableDrops =
-    getMappableDrops(drops);
+  const mappableDrops = getMappableDrops(drops);
+  const placeDrops = mappableDrops.filter(
+    (drop) => drop.location_type !== 'area'
+  );
+  const areaGroups = getAreaGroups(mappableDrops);
 
   return (
     <>
-      {mappableDrops.map((drop) => {
-        const coordinate = {
-          latitude:
-            drop.location_lat as number,
-          longitude:
-            drop.location_lng as number,
-        };
-
-        const selected =
-          selectedDropId === drop.id;
-
-        const isArea =
-          drop.location_type === 'area';
-
-        const areaRadius =
-          getAreaRadius(drop);
+      {placeDrops.map((drop) => {
+        const selected = selectedDropId === drop.id;
 
         return (
-          <Fragment key={drop.id}>
-            {isArea && Circle ? (
-              <>
-                <Circle
-                  center={coordinate}
-                  radius={areaRadius}
-                  fillColor={
-                    selected
-                      ? 'rgba(125,13,13,0.16)'
-                      : 'rgba(125,13,13,0.10)'
-                  }
-                  strokeColor={
-                    selected
-                      ? 'rgba(125,13,13,0.72)'
-                      : 'rgba(125,13,13,0.40)'
-                  }
-                  strokeWidth={
-                    selected
-                      ? 2
-                      : 1
-                  }
-                  zIndex={1}
-                  tappable
-                  onPress={(event: any) => {
-                    event?.stopPropagation?.();
-                    onSelectDrop(drop.id);
-                  }}
-                />
+          <Marker
+            key={drop.id}
+            coordinate={{
+              latitude: drop.location_lat as number,
+              longitude: drop.location_lng as number,
+            }}
+            tracksViewChanges
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={selected ? 100 : 60}
+            onPress={(event: any) => {
+              event?.stopPropagation?.();
+              onSelectArea?.(null);
+              onSelectDrop(drop.id);
+            }}
+          >
+            <View
+              style={[
+                styles.placeMarker,
+                selected && styles.placeMarkerSelected,
+              ]}
+            />
+          </Marker>
+        );
+      })}
 
-                {selected && (
-                  <Circle
-                    center={coordinate}
-                    radius={areaRadius}
-                    fillColor="rgba(125,13,13,0.16)"
-                    strokeColor="rgba(125,13,13,0.72)"
-                    strokeWidth={2}
-                    zIndex={2}
-                    tappable
-                    onPress={(event: any) => {
-                      event?.stopPropagation?.();
-                      onSelectDrop(drop.id);
-                    }}
-                  />
-                )}
-              </>
+      {areaGroups.map((group) => {
+        const selected = selectedAreaKey === group.key;
+        const count = group.drops.length;
+
+        return (
+          <View key={group.key}>
+            {Circle ? (
+              <Circle
+                center={{
+                  latitude: group.latitude,
+                  longitude: group.longitude,
+                }}
+                radius={group.radiusM}
+                fillColor={
+                  selected
+                    ? 'rgba(125,13,13,0.16)'
+                    : 'rgba(125,13,13,0.09)'
+                }
+                strokeColor={
+                  selected
+                    ? 'rgba(125,13,13,0.72)'
+                    : 'rgba(125,13,13,0.42)'
+                }
+                strokeWidth={selected ? 2 : 1}
+                zIndex={1}
+                tappable
+                onPress={(event: any) => {
+                  event?.stopPropagation?.();
+                  onSelectDrop(null);
+                  onSelectArea?.(group.key);
+                }}
+              />
             ) : null}
 
             <Marker
-              coordinate={coordinate}
-              tracksViewChanges
-              anchor={{
-                x: 0.5,
-                y: 0.5,
+            key={group.key}
+            coordinate={{
+              latitude: group.latitude,
+              longitude: group.longitude,
+            }}
+            tracksViewChanges
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={selected ? 110 : 80}
+            onPress={(event: any) => {
+              event?.stopPropagation?.();
+              onSelectDrop(null);
+              onSelectArea?.(group.key);
+            }}
+          >
+            <Pressable
+              onPress={() => {
+                onSelectDrop(null);
+                onSelectArea?.(group.key);
               }}
-              zIndex={
-                selected
-                  ? 100
-                  : isArea
-                    ? 80
-                    : 60
-              }
-              onPress={(event: any) => {
-                event?.stopPropagation?.();
-                onSelectDrop(drop.id);
-              }}
+              hitSlop={12}
+              style={[
+                styles.areaMarker,
+                selected && styles.areaMarkerSelected,
+              ]}
             >
-              <View
-                style={[
-                  styles.marker,
-                  isArea &&
-                    styles.areaMarker,
-                  selected &&
-                    styles.markerSelected,
-                  selected &&
-                    isArea &&
-                    styles.areaMarkerSelected,
-                ]}
-              >
-                {isArea ? (
-                  <View
-                    style={[
-                      styles.areaMarkerInner,
-                      selected &&
-                        styles.areaMarkerInnerSelected,
-                    ]}
-                  />
-                ) : null}
-              </View>
-            </Marker>
-          </Fragment>
+              <Text style={styles.areaMarkerCount}>
+                {count > 99 ? '99+' : count}
+              </Text>
+            </Pressable>
+          </Marker>
+          </View>
         );
       })}
     </>
@@ -234,20 +264,65 @@ export function DropMapMarkers({
 export function DropMapPreview({
   drops,
   selectedDropId,
+  selectedAreaKey = null,
   onOpenDrop,
+  onOpenArea,
 }: PreviewProps) {
-  const selectedDrop =
-    getMappableDrops(drops).find(
-      (drop) =>
-        drop.id === selectedDropId
-    ) ?? null;
+  const mappableDrops = getMappableDrops(drops);
 
-  if (!selectedDrop) {
-    return null;
+  if (selectedAreaKey) {
+    const group =
+      getAreaGroups(mappableDrops).find(
+        (item) => item.key === selectedAreaKey
+      ) ?? null;
+
+    if (!group) return null;
+
+    const count = group.drops.length;
+
+    return (
+      <View pointerEvents="box-none" style={styles.previewLayer}>
+        <View style={styles.preview}>
+          <View style={styles.previewTopRow}>
+            <View style={styles.previewLocationWrap}>
+              <Text numberOfLines={1} style={styles.previewLocation}>
+                {group.name}
+              </Text>
+              <Text style={styles.previewAreaHint}>
+                AREA
+              </Text>
+            </View>
+
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>
+                {count}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.areaTitle}>
+            {count} {count === 1 ? 'Drop' : 'Drops'} in {group.name}
+          </Text>
+
+          <Pressable
+            style={styles.viewAreaButton}
+            onPress={() => onOpenArea?.(group)}
+          >
+            <Text style={styles.viewAreaButtonText}>
+              View Drops →
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
   }
 
-  const isArea =
-    selectedDrop.location_type === 'area';
+  const selectedDrop =
+    mappableDrops.find(
+      (drop) => drop.id === selectedDropId
+    ) ?? null;
+
+  if (!selectedDrop) return null;
 
   const locationLabel =
     selectedDrop.location_name ||
@@ -260,65 +335,23 @@ export function DropMapPreview({
     'Drop';
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={styles.previewLayer}
-    >
+    <View pointerEvents="box-none" style={styles.previewLayer}>
       <Pressable
         style={styles.preview}
-        onPress={() =>
-          onOpenDrop(selectedDrop.id)
-        }
+        onPress={() => onOpenDrop(selectedDrop.id)}
       >
-        <View style={styles.previewTopRow}>
-          <View style={styles.previewLocationWrap}>
-            <Text
-              numberOfLines={1}
-              style={styles.previewLocation}
-            >
-              {locationLabel}
-            </Text>
+        <Text numberOfLines={1} style={styles.previewLocation}>
+          {locationLabel}
+        </Text>
 
-            {isArea && (
-              <Text
-                numberOfLines={1}
-                style={styles.previewAreaHint}
-              >
-                Approximate area
-              </Text>
-            )}
-          </View>
-
-          <View
-            style={[
-              styles.previewTypeBadge,
-              isArea &&
-                styles.previewAreaBadge,
-            ]}
-          >
-            <Text style={styles.previewType}>
-              {isArea
-                ? 'AREA'
-                : 'PLACE'}
-            </Text>
-          </View>
-        </View>
-
-        <Text
-          numberOfLines={2}
-          style={styles.previewText}
-        >
+        <Text numberOfLines={2} style={styles.previewText}>
           {selectedDrop.text}
         </Text>
 
         <View style={styles.previewBottomRow}>
-          <Text
-            numberOfLines={1}
-            style={styles.previewAuthor}
-          >
+          <Text numberOfLines={1} style={styles.previewAuthor}>
             {authorLabel}
           </Text>
-
           <Text style={styles.previewOpen}>
             View Drop →
           </Text>
@@ -328,166 +361,133 @@ export function DropMapPreview({
   );
 }
 
-const styles =
-  StyleSheet.create({
-    marker: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor:
-        DropColors.wine,
-      borderWidth: 3,
-      borderColor:
-        DropColors.warmWhite,
-    },
-
-    markerSelected: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      borderWidth: 4,
-    },
-
-    areaMarker: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor:
-        DropColors.warmWhite,
-      borderWidth: 2,
-      borderColor:
-        DropColors.wine,
-    },
-
-    areaMarkerSelected: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      borderWidth: 3,
-    },
-
-    areaMarkerInner: {
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
-      backgroundColor:
-        DropColors.wine,
-    },
-
-    areaMarkerInnerSelected: {
-      width: 9,
-      height: 9,
-      borderRadius: 4.5,
-    },
-
-    previewLayer: {
-      position: 'absolute',
-      left: 14,
-      right: 14,
-      bottom: 86,
-    },
-
-    preview: {
-      minHeight: 118,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderRadius: 18,
-      backgroundColor:
-        DropColors.graphite,
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-    },
-
-    previewTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-
-    previewLocationWrap: {
-      flex: 1,
-      minWidth: 0,
-    },
-
-    previewLocation: {
-      color:
-        DropColors.textSecondary,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 11,
-    },
-
-    previewAreaHint: {
-      marginTop: 2,
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 9,
-    },
-
-    previewTypeBadge: {
-      minHeight: 22,
-      paddingHorizontal: 8,
-      borderRadius: 11,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth:
-        StyleSheet.hairlineWidth,
-      borderColor:
-        DropColors.border,
-    },
-
-    previewAreaBadge: {
-      borderColor:
-        'rgba(125,13,13,0.65)',
-      backgroundColor:
-        'rgba(125,13,13,0.12)',
-    },
-
-    previewType: {
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 8,
-      letterSpacing: 0.8,
-    },
-
-    previewText: {
-      marginTop: 8,
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 16,
-      lineHeight: 21,
-    },
-
-    previewBottomRow: {
-      marginTop: 11,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-
-    previewAuthor: {
-      flex: 1,
-      color:
-        DropColors.textMuted,
-      fontFamily:
-        DropTypography.regular,
-      fontSize: 10,
-    },
-
-    previewOpen: {
-      color:
-        DropColors.warmWhite,
-      fontFamily:
-        DropTypography.medium,
-      fontSize: 11,
-    },
-  });
+const styles = StyleSheet.create({
+  placeMarker: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: DropColors.wine,
+    borderWidth: 3,
+    borderColor: DropColors.warmWhite,
+  },
+  placeMarkerSelected: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 4,
+  },
+  areaMarker: {
+    minWidth: 42,
+    height: 42,
+    paddingHorizontal: 9,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DropColors.wine,
+    borderWidth: 2,
+    borderColor: DropColors.warmWhite,
+  },
+  areaMarkerSelected: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+  },
+  areaMarkerCount: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 12,
+  },
+  previewLayer: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 86,
+  },
+  preview: {
+    minHeight: 118,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: DropColors.graphite,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DropColors.border,
+  },
+  previewTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  previewLocationWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  previewLocation: {
+    color: DropColors.textSecondary,
+    fontFamily: DropTypography.medium,
+    fontSize: 11,
+  },
+  previewAreaHint: {
+    marginTop: 2,
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.medium,
+    fontSize: 9,
+    letterSpacing: 0.8,
+  },
+  countBadge: {
+    minWidth: 30,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(125,13,13,0.18)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(125,13,13,0.65)',
+  },
+  countBadgeText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.semibold,
+    fontSize: 12,
+  },
+  areaTitle: {
+    marginTop: 10,
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  viewAreaButton: {
+    alignSelf: 'flex-end',
+    marginTop: 14,
+    paddingVertical: 5,
+  },
+  viewAreaButtonText: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 12,
+  },
+  previewText: {
+    marginTop: 8,
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  previewBottomRow: {
+    marginTop: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  previewAuthor: {
+    flex: 1,
+    color: DropColors.textMuted,
+    fontFamily: DropTypography.regular,
+    fontSize: 10,
+  },
+  previewOpen: {
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 11,
+  },
+});

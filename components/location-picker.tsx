@@ -65,6 +65,61 @@ type Props = {
 const MAPBOX_TOKEN =
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
 
+type LocalArea = {
+  name: string;
+  aliases: string[];
+  latitude: number;
+  longitude: number;
+  radiusM: number;
+};
+
+const LOCAL_RIGA_AREAS: LocalArea[] = [
+  { name: 'Purvciems', aliases: ['purvciems', 'пурвциемс'], latitude: 56.9580, longitude: 24.1770, radiusM: 1800 },
+  { name: 'Centrs', aliases: ['centrs', 'centre', 'center', 'центр'], latitude: 56.9547, longitude: 24.1131, radiusM: 1800 },
+  { name: 'Vecrīga', aliases: ['vecriga', 'vecrīga', 'old riga', 'old town', 'старая рига'], latitude: 56.9496, longitude: 24.1052, radiusM: 900 },
+  { name: 'Teika', aliases: ['teika', 'тейка'], latitude: 56.9750, longitude: 24.1660, radiusM: 1500 },
+  { name: 'Mežaparks', aliases: ['mezaparks', 'mežaparks', 'межапарк'], latitude: 57.0050, longitude: 24.1510, radiusM: 1800 },
+  { name: 'Āgenskalns', aliases: ['agenskalns', 'āgenskalns', 'агенскалнс'], latitude: 56.9360, longitude: 24.0710, radiusM: 1800 },
+  { name: 'Imanta', aliases: ['imanta', 'иманта'], latitude: 56.9600, longitude: 24.0170, radiusM: 2200 },
+  { name: 'Iļģuciems', aliases: ['ilguciems', 'iļģuciems', 'ильгюциемс'], latitude: 56.9730, longitude: 24.0660, radiusM: 1700 },
+  { name: 'Zolitūde', aliases: ['zolitude', 'zolitūde', 'золитуде'], latitude: 56.9430, longitude: 24.0100, radiusM: 1600 },
+  { name: 'Pļavnieki', aliases: ['plavnieki', 'pļavnieki', 'плавниеки'], latitude: 56.9390, longitude: 24.1990, radiusM: 1800 },
+  { name: 'Dārzciems', aliases: ['darzciems', 'dārzciems', 'дарзциемс'], latitude: 56.9300, longitude: 24.1640, radiusM: 1600 },
+  { name: 'Ķengarags', aliases: ['kengarags', 'ķengarags', 'кенгарагс'], latitude: 56.9100, longitude: 24.1850, radiusM: 2300 },
+  { name: 'Sarkandaugava', aliases: ['sarkandaugava', 'саркандаугава'], latitude: 56.9950, longitude: 24.1210, radiusM: 1800 },
+  { name: 'Jugla', aliases: ['jugla', 'югла'], latitude: 56.9870, longitude: 24.2440, radiusM: 2200 },
+  { name: 'Ziepniekkalns', aliases: ['ziepniekkalns', 'зиепниеккалнс'], latitude: 56.9000, longitude: 24.1000, radiusM: 2200 },
+  { name: 'Bolderāja', aliases: ['bolderaja', 'bolderāja', 'болдерая'], latitude: 57.0310, longitude: 24.0550, radiusM: 2200 },
+  { name: 'Daugavgrīva', aliases: ['daugavgriva', 'daugavgrīva', 'даугавгрива'], latitude: 57.0430, longitude: 24.0360, radiusM: 1800 },
+];
+
+function localAreaResults(query: string): SearchResult[] {
+  const needle = normalizeText(query);
+  if (needle.length < 2) return [];
+
+  return LOCAL_RIGA_AREAS
+    .filter((area) =>
+      [area.name, ...area.aliases].some((alias) =>
+        normalizeText(alias).includes(needle)
+      )
+    )
+    .map((area) => ({
+      id: `drop-area:riga:${normalizeText(area.name).replace(/\s+/g, '-')}`,
+      name: area.name,
+      subtitle: 'Riga, Latvia',
+      featureType: 'neighborhood',
+      longitude: area.longitude,
+      latitude: area.latitude,
+    }));
+}
+
+function localAreaRadius(result: SearchResult) {
+  const match = LOCAL_RIGA_AREAS.find(
+    (area) => normalizeText(area.name) === normalizeText(result.name)
+  );
+  return match?.radiusM ?? null;
+}
+
 const AREA_TYPES = new Set([
   'neighborhood',
   'locality',
@@ -417,6 +472,7 @@ async function searchAreas(
     ]);
 
   const combined = [
+    ...localAreaResults(query),
     ...searchBoxResults,
     ...geocodingResults,
   ];
@@ -645,6 +701,24 @@ export function LocationPicker({
       try {
         setSaving(true);
         setErrorText('');
+
+        if (
+          mode === 'area' &&
+          result.id.startsWith('drop-area:')
+        ) {
+          onChange({
+            type: 'area',
+            name: result.name,
+            address: null,
+            latitude: result.latitude,
+            longitude: result.longitude,
+            radiusM: localAreaRadius(result) ?? 1600,
+            providerId: result.id,
+          });
+
+          onClose();
+          return;
+        }
 
         const permanentQuery =
           [
