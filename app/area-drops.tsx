@@ -1,17 +1,17 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    DropColors,
-    DropTypography,
+  DropColors,
+  DropTypography,
 } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +20,8 @@ type AreaDrop = {
   text: string;
   location_name: string | null;
   location_text: string | null;
+  location_provider_id: string | null;
+  event_end_time: string | null;
   created_at: string;
   profiles: {
     username: string | null;
@@ -53,8 +55,10 @@ export default function AreaDropsScreen() {
             text,
             location_name,
             location_text,
+            location_provider_id,
+            event_end_time,
             created_at,
-            profiles (
+            profiles!drops_author_id_fkey (
               username,
               display_name
             )
@@ -64,30 +68,62 @@ export default function AreaDropsScreen() {
           .is('deleted_at', null)
           .order('created_at', { ascending: false });
 
-        if (
-          areaKey &&
-          !areaKey.startsWith('area:')
-        ) {
-          query = query.eq(
-            'location_provider_id',
-            areaKey
-          );
-        } else if (areaName) {
-          query = query.ilike(
-            'location_name',
-            areaName
-          );
-        }
-
         const { data, error } = await query;
 
         if (error) {
           throw error;
         }
 
+        const normalizeArea = (
+          value: string | null | undefined
+        ) =>
+          (value ?? '')
+            .trim()
+            .toLocaleLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ');
+
+        const targetName =
+          normalizeArea(areaName);
+
+        const now =
+          Date.now();
+
+        const matchingDrops =
+          (
+            (data ?? []) as unknown as AreaDrop[]
+          ).filter((drop) => {
+            if (
+              drop.event_end_time &&
+              new Date(
+                drop.event_end_time
+              ).getTime() <= now
+            ) {
+              return false;
+            }
+
+            const sameProvider =
+              !!areaKey &&
+              drop.location_provider_id ===
+                areaKey;
+
+            const sameName =
+              !!targetName &&
+              normalizeArea(
+                drop.location_name ||
+                  drop.location_text
+              ) === targetName;
+
+            return (
+              sameProvider ||
+              sameName
+            );
+          });
+
         if (!cancelled) {
           setDrops(
-            (data ?? []) as unknown as AreaDrop[]
+            matchingDrops
           );
         }
       } catch (error) {
@@ -172,7 +208,10 @@ export default function AreaDropsScreen() {
               return (
                 <Pressable
                   key={drop.id}
-                  style={styles.card}
+                  style={({ pressed }) => [
+                    styles.row,
+                    pressed && styles.rowPressed,
+                  ]}
                   onPress={() =>
                     router.push({
                       pathname: '/drop/[id]',
@@ -182,13 +221,15 @@ export default function AreaDropsScreen() {
                     } as any)
                   }
                 >
-                  <Text style={styles.author}>
-                    {author}
-                  </Text>
+                  <View style={styles.rowContent}>
+                    <Text style={styles.author}>
+                      {author}
+                    </Text>
 
-                  <Text style={styles.dropText}>
-                    {drop.text}
-                  </Text>
+                    <Text style={styles.dropText}>
+                      {drop.text}
+                    </Text>
+                  </View>
 
                   <Text style={styles.open}>
                     View Drop →
@@ -248,18 +289,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: {
-    paddingVertical: 14,
     paddingBottom: 44,
   },
-  card: {
-    marginHorizontal: 18,
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderRadius: 18,
-    backgroundColor: DropColors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DropColors.border,
+  row: {
+    minHeight: 112,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DropColors.border,
+    backgroundColor: DropColors.graphite,
+  },
+  rowPressed: {
+    opacity: 0.68,
+  },
+  rowContent: {
+    paddingRight: 96,
   },
   author: {
     color: DropColors.textMuted,
@@ -267,15 +311,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   dropText: {
-    marginTop: 10,
+    marginTop: 9,
     color: DropColors.warmWhite,
     fontFamily: DropTypography.medium,
     fontSize: 18,
     lineHeight: 24,
   },
   open: {
-    marginTop: 16,
-    alignSelf: 'flex-end',
+    position: 'absolute',
+    right: 18,
+    bottom: 18,
     color: DropColors.textSecondary,
     fontFamily: DropTypography.medium,
     fontSize: 11,

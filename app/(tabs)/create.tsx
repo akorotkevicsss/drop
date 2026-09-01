@@ -35,6 +35,7 @@ import {
 } from '@/components/location-picker';
 import { PhotoEditor } from '@/components/photo-editor';
 
+import { DropComposerPreview } from '@/components/drop-composer-preview';
 import {
   DropColors,
   DropTypography,
@@ -1322,26 +1323,13 @@ export default function CreateScreen() {
         {loadingDefaults ? <View style={styles.loadingDefaults}><ActivityIndicator color={DropColors.warmWhite} /></View> : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.v3Content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
             <Text style={styles.v3SectionLabel}>DROP</Text>
-            <View
-              style={[
-                styles.v3ComposerBox,
-                backgroundColor && styles.v3ComposerBoxBackground,
-                backgroundColor && { backgroundColor },
-              ]}
-            >
-              <TextInput
-                style={styles.v3MainInput}
-                placeholder="What do you want to do?"
-                placeholderTextColor={DropColors.textMuted}
-                value={text}
-                onChangeText={setText}
-                multiline
-                maxLength={280}
-                autoFocus
-                selectionColor={DropColors.wine}
-              />
-              <Text style={styles.v3Counter}>{text.length}/280</Text>
-            </View>
+            <DropComposerPreview
+              value={text}
+              onChangeText={setText}
+              backgroundColor={backgroundColor}
+              maxLength={280}
+              autoFocus
+            />
 
             {(pendingImage || pendingVideo) && (
               <View style={styles.v3MediaState}>

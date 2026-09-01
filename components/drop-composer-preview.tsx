@@ -1,13 +1,13 @@
 import {
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 import {
-    DropColors,
-    DropTypography,
+  DropColors,
+  DropTypography,
 } from '@/constants/theme';
 
 type Props = {
@@ -25,31 +25,30 @@ export function DropComposerPreview({
   maxLength = 280,
   autoFocus = false,
 }: Props) {
-  const hasVisualBackground = !!backgroundColor;
-
   return (
     <View
       style={[
-        styles.card,
-        hasVisualBackground && styles.cardWithBackground,
+        styles.visual,
         backgroundColor
-          ? { backgroundColor }
+          ? {
+              backgroundColor,
+            }
           : null,
       ]}
     >
-      <View style={styles.textCenter}>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          placeholder="What do you want to do?"
-          placeholderTextColor={DropColors.textMuted}
-          multiline
-          maxLength={maxLength}
-          autoFocus={autoFocus}
-          selectionColor={DropColors.wine}
-          style={styles.input}
-        />
-      </View>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="What do you want to do?"
+        placeholderTextColor={
+          DropColors.textMuted
+        }
+        multiline
+        maxLength={maxLength}
+        autoFocus={autoFocus}
+        selectionColor={DropColors.wine}
+        style={styles.input}
+      />
 
       <Text style={styles.counter}>
         {value.length}/{maxLength}
@@ -59,41 +58,34 @@ export function DropComposerPreview({
 }
 
 const styles = StyleSheet.create({
-  card: {
+  // Mirrors Home styles.dropVisual + dropVisualSolid:
+  // minHeight 176, 18px horizontal/vertical padding, centered content.
+  visual: {
     position: 'relative',
-    minHeight: 260,
+    minHeight: 160,
     marginHorizontal: 18,
-    borderRadius: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DropColors.border,
-  },
-  cardWithBackground: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderBottomWidth: 0,
-  },
-  textCenter: {
-    flex: 1,
-    minHeight: 260,
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 28,
-    paddingBottom: 46,
+    paddingHorizontal: 0,
+    paddingVertical: 18,
+    backgroundColor: DropColors.graphite,
   },
+
+  // Mirrors Home styles.dropVisualText:
   input: {
     width: '100%',
     padding: 0,
     color: DropColors.warmWhite,
     fontFamily: DropTypography.medium,
-    fontSize: 21,
-    lineHeight: 28,
+    fontSize: 18,
+    lineHeight: 25,
     textAlign: 'left',
     textAlignVertical: 'center',
   },
+
   counter: {
     position: 'absolute',
-    right: 18,
-    bottom: 12,
+    right: 12,
+    bottom: 9,
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
     fontSize: 10,

@@ -272,7 +272,6 @@ export default function ExploreScreen() {
   ] = useState<string | null>(
     null
   );
-
   useEffect(() => {
     if (
       openMapParam !== '1'
@@ -2866,42 +2865,38 @@ export default function ExploreScreen() {
             scrollEnabled
             zoomEnabled
             toolbarEnabled={false}
+            onPress={(event) => {
+              if (
+                event.nativeEvent.action &&
+                event.nativeEvent.action !== 'press'
+              ) {
+                return;
+              }
+
+              setSelectedMapDropId(null);
+            }}
 
           >
-            <DropMapMarkers
+          <DropMapMarkers
               drops={mapDrops}
-              selectedDropId={
-                selectedMapDropId
-              }
-              onSelectDrop={
-                setSelectedMapDropId
-              }
+              selectedDropId={selectedMapDropId}
+              onSelectDrop={setSelectedMapDropId}
             />
           </MapView>
 
           <DropMapPreview
             drops={mapDrops}
-            selectedDropId={
-              selectedMapDropId
-            }
-            onOpenDrop={(
-              dropId
-            ) => {
+            selectedDropId={selectedMapDropId}
+            onOpenDrop={(dropId) => {
               const drop =
                 mapDrops.find(
-                  (
-                    item
-                  ) =>
+                  (item) =>
                     item.id ===
                     dropId
                 );
 
-              if (
-                drop
-              ) {
-                openDrop(
-                  drop
-                );
+              if (drop) {
+                openDrop(drop);
               }
             }}
           />

@@ -1,74 +1,93 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { DropColors, DropTypography } from '@/constants/theme';
-import { supabase } from '@/lib/supabase';
+import {
+  DropColors,
+  DropTypography,
+} from '@/constants/theme';
 
-type DropCommentsPreviewProps = {
-  dropId: string;
-  enabled: boolean;
+type Props = {
+  value: string;
+  onChangeText: (value: string) => void;
+  backgroundColor: string | null;
+  maxLength?: number;
+  autoFocus?: boolean;
 };
 
-export function DropCommentsPreview({
-  dropId,
-  enabled,
-}: DropCommentsPreviewProps) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      if (!enabled) {
-        if (mounted) setCount(0);
-        return;
-      }
-
-      const { count: total } = await supabase
-        .from('drop_comments')
-        .select('id', { count: 'exact', head: true })
-        .eq('drop_id', dropId)
-        .is('deleted_at', null);
-
-      if (mounted) {
-        setCount(total ?? 0);
-      }
-    };
-
-    load();
-
-    return () => {
-      mounted = false;
-    };
-  }, [dropId, enabled]);
-
-  if (!enabled || count === 0) {
-    return null;
-  }
-
+export function DropComposerPreview({
+  value,
+  onChangeText,
+  backgroundColor,
+  maxLength = 280,
+  autoFocus = false,
+}: Props) {
   return (
-    <Pressable
-      style={styles.container}
-      onPress={() =>
-        router.push({
-          pathname: '/drop/[id]/comments',
-          params: { id: dropId },
-        } as any)
-      }
+    <View
+      style={[
+        styles.visual,
+        backgroundColor
+          ? {
+              backgroundColor,
+            }
+          : null,
+      ]}
     >
-      <Text style={styles.text}>
-        {count === 1 ? 'View 1 comment' : `View all ${count} comments`}
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="What do you want to do?"
+        placeholderTextColor={
+          DropColors.textMuted
+        }
+        multiline
+        maxLength={maxLength}
+        autoFocus={autoFocus}
+        selectionColor={DropColors.wine}
+        style={styles.input}
+      />
+
+      <Text style={styles.counter}>
+        {value.length}/{maxLength}
       </Text>
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: 8,
+  // Mirrors Home styles.dropVisual + dropVisualSolid:
+  // minHeight 176, 18px horizontal/vertical padding, centered content.
+  visual: {
+    position: 'relative',
+    minHeight: 176,
+    marginHorizontal: 18,
+    borderRadius: 16,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    backgroundColor: DropColors.surface,
   },
-  text: {
+
+  // Mirrors Home styles.dropVisualText:
+  input: {
+    width: '100%',
+    padding: 0,
+    color: DropColors.warmWhite,
+    fontFamily: DropTypography.medium,
+    fontSize: 18,
+    lineHeight: 25,
+    textAlign: 'left',
+    textAlignVertical: 'center',
+  },
+
+  counter: {
+    position: 'absolute',
+    right: 12,
+    bottom: 9,
     color: DropColors.textMuted,
     fontFamily: DropTypography.regular,
     fontSize: 10,
