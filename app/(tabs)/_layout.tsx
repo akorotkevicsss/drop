@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Image } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/lib/supabase';
@@ -486,19 +485,23 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={24}
-              name="person.fill"
-              color={color}
-            />
-          ),
+<Tabs.Screen
+  name="profile"
+  options={{
+    title: 'Profile',
+    tabBarIcon: ({ focused }) => (
+      <Image
+        source={require('../../img/profilelogo_transparent.png')}
+        style={{
+          width: 29,
+          height: 29,
+          opacity: focused ? 1 : 0.55,
         }}
+        resizeMode="contain"
       />
+    ),
+  }}
+/>
 
       <Tabs.Screen
         name="create"
