@@ -12,14 +12,28 @@ import {
 } from '@expo-google-fonts/fira-sans';
 
 import {
+  Asset,
+} from 'expo-asset';
+
+import {
   Stack,
 } from 'expo-router';
+
+import * as SplashScreen from 'expo-splash-screen';
 
 import {
   useCallback,
   useEffect,
   useState,
 } from 'react';
+
+import {
+  ActivityIndicator,
+  Image,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import {
   AppGateContext,
@@ -33,6 +47,21 @@ import {
 import {
   supabase,
 } from '@/lib/supabase';
+
+
+void SplashScreen.preventAutoHideAsync();
+
+
+const STARTUP_MIN_DURATION_MS =
+  4000;
+
+const STARTUP_ASSETS = [
+  require('../img/droplogofull_transparent.png'),
+  require('../img/navbarcompass_transparent.png'),
+  require('../img/logodrop_transparent.png'),
+  require('../img/messageslogo_transparent.png'),
+  require('../img/profilelogo_transparent.png'),
+];
 
 
 export default function RootLayout() {
@@ -76,6 +105,24 @@ export default function RootLayout() {
     setLoading,
   ] =
     useState(true);
+
+  const [
+    assetsLoaded,
+    setAssetsLoaded,
+  ] =
+    useState(false);
+
+  const [
+    minimumStartupTimePassed,
+    setMinimumStartupTimePassed,
+  ] =
+    useState(false);
+
+  const [
+    nativeSplashHidden,
+    setNativeSplashHidden,
+  ] =
+    useState(false);
 
   const checkProfile =
     useCallback(
@@ -231,6 +278,54 @@ export default function RootLayout() {
   ]);
 
   useEffect(() => {
+    let active =
+      true;
+
+    void Asset
+      .loadAsync(
+        STARTUP_ASSETS
+      )
+      .catch(
+        (error) => {
+          console.warn(
+            'STARTUP ASSET PRELOAD ERROR:',
+            error
+          );
+        }
+      )
+      .finally(
+        () => {
+          if (active) {
+            setAssetsLoaded(
+              true
+            );
+          }
+        }
+      );
+
+    const timer =
+      setTimeout(
+        () => {
+          if (active) {
+            setMinimumStartupTimePassed(
+              true
+            );
+          }
+        },
+        STARTUP_MIN_DURATION_MS
+      );
+
+    return () => {
+      active =
+        false;
+
+      clearTimeout(
+        timer
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     supabase.auth
       .getSession()
       .then(
@@ -278,11 +373,60 @@ export default function RootLayout() {
     checkProfile,
   ]);
 
+  const startupReady =
+    fontsLoaded &&
+    assetsLoaded &&
+    !loading;
+
+  useEffect(() => {
+    if (
+      !fontsLoaded ||
+      !assetsLoaded ||
+      nativeSplashHidden
+    ) {
+      return;
+    }
+
+    void SplashScreen
+      .hideAsync()
+      .then(
+        () => {
+          setNativeSplashHidden(
+            true
+          );
+        }
+      )
+      .catch(
+        (error) => {
+          console.warn(
+            'SPLASH HIDE ERROR:',
+            error
+          );
+
+          setNativeSplashHidden(
+            true
+          );
+        }
+      );
+  }, [
+    assetsLoaded,
+    fontsLoaded,
+    nativeSplashHidden,
+  ]);
+
   if (
-    loading ||
-    !fontsLoaded
+    !nativeSplashHidden
   ) {
     return null;
+  }
+
+  if (
+    !startupReady ||
+    !minimumStartupTimePassed
+  ) {
+    return (
+      <StartupScreen />
+    );
   }
 
   return (
@@ -410,3 +554,90 @@ export default function RootLayout() {
     </AppGateContext.Provider>
   );
 }
+
+
+function StartupScreen() {
+  return (
+    <View
+      style={
+        styles.startupScreen
+      }
+    >
+      <View
+        style={
+          styles.brandBlock
+        }
+      >
+        <Image
+          source={
+            require('../img/droplogofull.png')
+          }
+          style={
+            styles.logo
+          }
+          resizeMode="contain"
+        />
+
+        <Text
+          style={
+            styles.tagline
+          }
+        >
+          intent over reaction
+        </Text>
+      </View>
+
+      <ActivityIndicator
+        size="small"
+        color="#FFF2E4"
+        style={
+          styles.loader
+        }
+      />
+    </View>
+  );
+}
+
+
+const styles =
+  StyleSheet.create({
+    startupScreen: {
+      flex: 1,
+      backgroundColor:
+        '#0C0C0C',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+    },
+
+    brandBlock: {
+      width: '100%',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      paddingHorizontal: 36,
+    },
+
+    logo: {
+      width: 340,
+      height: 180,
+    },
+
+    tagline: {
+      marginTop: -15,
+      color:
+        '#FFF2E4',
+      fontFamily:
+        'FiraSans_400Regular',
+      fontSize: 17,
+      letterSpacing: 0.5,
+    },
+
+    loader: {
+      position:
+        'absolute',
+      bottom: 92,
+    },
+  });
