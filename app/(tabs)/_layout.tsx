@@ -2,6 +2,7 @@ import { Tabs, router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
+import { DropLogoIcon } from '@/components/ui/drop-logo-icon';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -440,12 +441,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Drops',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={24}
-              name="house.fill"
-              color={color}
-            />
+          tabBarIcon: ({ focused }) => (
+            <DropLogoIcon size={25} active={focused} />
           ),
         }}
       />
