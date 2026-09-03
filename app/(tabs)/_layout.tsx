@@ -419,11 +419,15 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={24}
-              name="safari.fill"
-              color={color}
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('../../img/navbarcompass_transparent.png')}
+              style={{
+                width: 25,
+                height: 25,
+                opacity: focused ? 1 : 0.55,
+              }}
+              resizeMode="contain"
             />
           ),
         }}
