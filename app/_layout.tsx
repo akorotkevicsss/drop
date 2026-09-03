@@ -26,6 +26,11 @@ import {
 } from '@/contexts/app-gate-context';
 
 import {
+  installPushResponseListener,
+  registerPushNotificationsAsync,
+} from '@/lib/push-notifications';
+
+import {
   supabase,
 } from '@/lib/supabase';
 
@@ -205,6 +210,25 @@ export default function RootLayout() {
         checkProfile,
       ]
     );
+
+  useEffect(() => {
+    return installPushResponseListener();
+  }, []);
+
+  useEffect(() => {
+    const userId =
+      session?.user.id;
+
+    if (!userId) {
+      return;
+    }
+
+    void registerPushNotificationsAsync(
+      userId
+    );
+  }, [
+    session?.user.id,
+  ]);
 
   useEffect(() => {
     supabase.auth

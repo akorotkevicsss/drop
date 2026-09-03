@@ -43,6 +43,13 @@
           }
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "color": "#7D0D0D",
+          "defaultChannel": "default"
+        }
+      ],
       "expo-font",
       "expo-audio",
       "expo-asset",
