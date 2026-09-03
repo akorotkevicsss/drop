@@ -1,8 +1,8 @@
 import { Tabs, router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
+import { Image } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { DropLogoIcon } from '@/components/ui/drop-logo-icon';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -442,7 +442,15 @@ export default function TabLayout() {
         options={{
           title: 'Drops',
           tabBarIcon: ({ focused }) => (
-            <DropLogoIcon size={25} active={focused} />
+            <Image
+              source={require('../../img/logodrop_transparent.png')}
+              style={{
+                width: 35,
+                height: 35,
+                opacity: focused ? 1 : 0.55,
+              }}
+              resizeMode="contain"
+            />
           ),
         }}
       />
