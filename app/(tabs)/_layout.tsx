@@ -423,8 +423,8 @@ export default function TabLayout() {
             <Image
               source={require('../../img/navbarcompass_transparent.png')}
               style={{
-                width: 25,
-                height: 25,
+                width: 28,
+                height: 28,
                 opacity: focused ? 1 : 0.55,
               }}
               resizeMode="contain"
@@ -449,8 +449,8 @@ export default function TabLayout() {
             <Image
               source={require('../../img/logodrop_transparent.png')}
               style={{
-                width: 35,
-                height: 35,
+                width: 40,
+                height: 40,
                 opacity: focused ? 1 : 0.55,
               }}
               resizeMode="contain"
@@ -464,11 +464,15 @@ export default function TabLayout() {
         options={{
           title: 'Messages',
           tabBarBadge: formatBadge(unreadCount),
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={24}
-              name="message.fill"
-              color={color}
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('../../img/messageslogo_transparent.png')}
+              style={{
+                width: 29,
+                height: 29,
+                opacity: focused ? 1 : 0.55,
+              }}
+              resizeMode="contain"
             />
           ),
         }}
